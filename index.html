@@ -35,7 +35,7 @@
 
     <button class="link" id="forgotBtn">Esqueci minha senha</button>
     <div id="loginMsg" class="msg"></div>
-      </div>
+  </div>
 
   <button class="theme-fab" id="themeFabLogin" title="Alternar tema">🌗</button>
 </div>
@@ -72,44 +72,44 @@
     </div>
     <div class="topbar-right">
       <span id="clock" class="clock"></span>
+      <button class="icon-btn" id="themeBtn" title="Alternar tema">🌗</button>
+      <button class="icon-btn" id="logoutBtn" title="Sair">⎋</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" id="sidebar">
+      <button class="nav-item active" data-view="dashboard">📊 <span>Painel</span></button>
+      <button class="nav-item" data-view="lancamentos">🧾 <span>Lançamentos</span></button>
+      <button class="nav-item" data-view="estoque">📦 <span>Estoque</span></button>
+      <button class="nav-item" data-view="produtos">🏷️ <span>Produtos</span></button>
+      <button class="nav-item" data-view="relatorios">📈 <span>Relatórios</span></button>
+      <button class="nav-item" data-view="dados">💾 <span>Import/Export</span></button>
+      <button class="nav-item" data-view="admin">⚙️ <span>Interface</span></button>
+      <div class="sidebar-foot"><span id="userBadge"></span></div>
+    </nav>
+    <div class="backdrop" id="sidebarBackdrop"></div>
+
+    <main class="content">
+
+      <!-- DASHBOARD -->
+      <section class="view" id="view-dashboard">
+        <h2 class="view-title">Painel</h2>
+        <div class="cards">
+          <div class="card"><span class="card-label">Compras hoje (kg)</span><strong id="kpiKgHoje">0</strong></div>
+          <div class="card"><span class="card-label">Gasto hoje</span><strong id="kpiGastoHoje">R$ 0,00</strong></div>
+          <div class="card"><span class="card-label">Vendas hoje</span><strong id="kpiVendaHoje">R$ 0,00</strong></div>
+          <div class="card"><span class="card-label">Lucro previsto hoje</span><strong id="kpiLucroHoje">R$ 0,00</strong></div>
+          <div class="card"><span class="card-label">Estoque total (kg)</span><strong id="kpiEstoque">0</strong></div>
+          <div class="card"><span class="card-label">Valor de estoque</span><strong id="kpiEstoqueValor">R$ 0,00</strong></div>
         </div>
-  <button class="theme-fab" id="themeFabLogin" title="Alternar tema">🌗</button>
-</div>
+        <h3 class="sub">Últimos lançamentos</h3>
+        <div class="table-wrap"><table id="tblUltimos"><thead><tr>
+          <th>Data/Hora</th><th>Produto</th><th>Tipo</th><th>Peso (kg)</th><th>Preço/kg</th><th>Total</th>
+        </tr></thead><tbody></tbody></table></div>
+      </section>
 
-<!-- ============== RECUPERAÇÃO DE SENHA ============== -->
-<div class="modal-backdrop" id="resetModal">
-  <div class="modal">
-    <h2>Recuperar senha</h2>
-    <p class="muted">Informe o e-mail cadastrado. Enviaremos um link de redefinição.</p>
-    <form id="resetForm">
-      <input type="email" id="resetEmail" placeholder="seu@email.com" required />
-      <div class="row gap">
-        <button type="submit" class="btn primary">Enviar link</button>
-        <button type="button" class="btn ghost" data-close="resetModal">Cancelar</button>
-      </div>
-    </form>
-    <div id="resetMsg" class="msg"></div>
-  </div>
-</div>
-
-<!-- ============== LOADER ============== -->
-<div id="loader" class="loader-overlay">
-  <div class="spinner"></div>
-  <p id="loaderText">Carregando sistema...</p>
-</div>
-
-<!-- ================= APP ================= -->
-<div id="app" class="app hidden">
-  <header class="topbar">
-    <button class="icon-btn" id="menuBtn" aria-label="Menu">☰</button>
-    <div class="brand">
-      <img id="brandLogo" src="/logo.png" alt="" onerror="this.remove()" />
-      <span id="brandName">Sistema Reciclagem</span>
-    </div>
-    <div class="topbar-right">
-      <span id="clock" class="clock"></span>
-
-            <!-- LANÇAMENTOS -->
+      <!-- LANÇAMENTOS -->
       <section class="view hidden" id="view-lancamentos">
         <h2 class="view-title">Lançamentos diários</h2>
         <form id="lancForm" class="panel grid-form">
@@ -147,7 +147,7 @@
       <section class="view hidden" id="view-estoque">
         <h2 class="view-title">Estoque</h2>
         <form id="ajusteForm" class="panel grid-form">
-                    <div><label>Produto</label><select id="ajProduto" required></select></div>
+          <div><label>Produto</label><select id="ajProduto" required></select></div>
           <div><label>Tipo de ajuste</label><select id="ajTipo">
             <option value="inicial">Saldo inicial (pré-sistema)</option>
             <option value="entrada">Entrada manual</option>
@@ -182,7 +182,7 @@
             <button class="btn ghost" type="button" id="prodCancel">Cancelar edição</button>
           </div>
         </form>
-                <div class="table-wrap"><table id="tblProdutos"><thead><tr>
+        <div class="table-wrap"><table id="tblProdutos"><thead><tr>
           <th>Nome</th><th>Categoria</th><th>Compra</th><th>Venda</th><th>Margem</th><th></th>
         </tr></thead><tbody></tbody></table></div>
       </section>
@@ -197,7 +197,7 @@
           <div><label>Referência</label><input type="date" id="relRef" /></div>
           <div class="row gap end">
             <button class="btn" id="relGerar">Gerar</button>
-            <button class="btn ghost" id="relCsv">Exportar CSV</button>
+                        <button class="btn ghost" id="relCsv">Exportar CSV</button>
             <button class="btn ghost" id="relPrint">Imprimir / PDF</button>
           </div>
         </div>
@@ -219,7 +219,7 @@
         <div class="panel">
           <h3 class="sub">Exportar</h3>
           <div class="filters">
-                        <div><label>Escopo</label><select id="expEscopo">
+            <div><label>Escopo</label><select id="expEscopo">
               <option value="full">Banco completo</option>
               <option value="periodo">Somente período</option>
             </select></div>
