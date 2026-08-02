@@ -9,12 +9,12 @@
    ========================================================================== */
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDL2IqS0ESrPAbkdGlxRr6aoLuafQTEzpg",
-  authDomain: "susj-a1f90.firebaseapp.com",
-  projectId: "susj-a1f90",
-  storageBucket: "susj-a1f90.firebasestorage.app",
-  messagingSenderId: "504906646580",
-  appId: "1:504906646580:web:bf260fa5dcf22737a9b661"
+  apiKey: "AIzaSyDueOpl3tlLcv_EIvFjI2RoAy9yVKJMMyg",
+  authDomain: "ssj2-f526f.firebaseapp.com",
+  projectId: "ssj2-f526f",
+  storageBucket: "ssj2-f526f.firebasestorage.app",
+  messagingSenderId: "496833025593",
+  appId: "1:496833025593:web:7f82b5eab3c5dcd0e19fe8"
 };
 
 const ADMIN_EMAIL = "admin@admin.com"; // único usuário com permissão de escrita
