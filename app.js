@@ -40,6 +40,18 @@ const num = (v) => (isNaN(parseFloat(v)) ? 0 : parseFloat(v));
 let MOEDA = "R$";
 const money = (v) => `${MOEDA} ` + num(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const kg = (v) => num(v).toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+const un = (v) => num(v).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+const prodUnid = (id) => (state.produtos[id] && state.produtos[id].unidade === "un" ? "un" : "kg");
+/* formata quantidade respeitando a unidade do produto/lancamento */
+const qtd = (v, u) => (u === "un" ? un(v) + " un" : kg(v) + " kg");
+const unidDe = (o) => (o && o.unidade === "un" ? "un" : (o && o.unidade === "kg" ? "kg" : prodUnid(o && o.produtoId)));
+/* string combinada "1.000,000 kg . 12 un" */
+const dual = (k, u2) => {
+  const parts = [];
+  if (k || !u2) parts.push(kg(k) + " kg");
+  if (u2) parts.push(un(u2) + " un");
+  return parts.join(" \u00b7 ");
+};
 const dtLocal = (iso) => new Date(iso).toLocaleString("pt-BR");
 const toInputDT = (d) => {
   const p = (n) => String(n).padStart(2, "0");
@@ -60,7 +72,7 @@ function loader(on, text = "Carregando sistema...") {
 }
 
 /* ------------------------------ estado ----------------------------------- */
-const state = { produtos: {}, lancamentos: {}, ajustes: {}, ui: {}, user: null, editLanc: null, editProd: null };
+const state = { produtos: {}, lancamentos: {}, ajustes: {}, ui: {}, user: null, editLanc: null, editProd: null, carrinho: [] };
 const isAdmin = () => state.user && state.user.email === ADMIN_EMAIL;
 function guard() {
   if (!isAdmin()) { toast(`Somente ${ADMIN_EMAIL} pode gravar dados.`, true); return false; }
@@ -233,6 +245,7 @@ $("#prodForm").addEventListener("submit", async (e) => {
   const p = {
     nome: $("#prodNome").value.trim(),
     categoria: $("#prodCat").value.trim(),
+    unidade: $("#prodUnid").value === "un" ? "un" : "kg",
     precoCompra: num($("#prodCompra").value),
     precoVenda: num($("#prodVenda").value),
   };
@@ -247,11 +260,11 @@ $("#prodCancel").onclick = () => { state.editProd = null; $("#prodForm").reset()
 function renderProdutos() {
   const tb = $("#tblProdutos tbody"); tb.innerHTML = "";
   const list = Object.entries(state.produtos).sort((a, b) => a[1].nome.localeCompare(b[1].nome));
-  if (!list.length) { tb.innerHTML = `<tr><td colspan="6" class="empty">Nenhum produto cadastrado.</td></tr>`; return; }
+  if (!list.length) { tb.innerHTML = `<tr><td colspan="7" class="empty">Nenhum produto cadastrado.</td></tr>`; return; }
   for (const [id, p] of list) {
     const margem = num(p.precoVenda) - num(p.precoCompra);
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${p.nome}</td><td>${p.categoria || "-"}</td><td>${money(p.precoCompra)}</td>
+    tr.innerHTML = `<td>${p.nome}</td><td>${p.categoria || "-"}</td><td>${p.unidade === "un" ? "un" : "kg"}</td><td>${money(p.precoCompra)}</td>
       <td>${money(p.precoVenda)}</td><td>${money(margem)}</td>
       <td><button class="btn mini" data-e="${id}">Editar</button>
           <button class="btn mini danger" data-d="${id}">Excluir</button></td>`;
@@ -260,6 +273,7 @@ function renderProdutos() {
   tb.querySelectorAll("[data-e]").forEach((b) => (b.onclick = () => {
     const p = state.produtos[b.dataset.e]; state.editProd = b.dataset.e;
     $("#prodNome").value = p.nome; $("#prodCat").value = p.categoria || "";
+    $("#prodUnid").value = p.unidade === "un" ? "un" : "kg";
     $("#prodCompra").value = p.precoCompra || ""; $("#prodVenda").value = p.precoVenda || "";
     window.scrollTo({ top: 0, behavior: "smooth" });
   }));
@@ -270,15 +284,32 @@ function renderProdutos() {
 }
 function fillProductSelects() {
   const list = Object.entries(state.produtos).sort((a, b) => a[1].nome.localeCompare(b[1].nome));
-  const opts = list.map(([id, p]) => `<option value="${id}">${p.nome}</option>`).join("");
+  const opts = list.map(([id, p]) => `<option value="${id}">${p.nome} (${p.unidade === "un" ? "un" : "kg"})</option>`).join("");
   $("#lancProduto").innerHTML = opts;
   $("#ajProduto").innerHTML = opts;
+  $("#cxProduto").innerHTML = opts;
   $("#fProduto").innerHTML = `<option value="">Todos</option>` + opts;
+  rotulosLanc(); rotulosAjuste(); rotulosCaixa();
 }
 const prodNome = (id) => (state.produtos[id] ? state.produtos[id].nome : "(removido)");
 
 /* preço sugerido ao trocar produto/tipo */
+function rotulosLanc() {
+  const u = prodUnid($("#lancProduto").value);
+  $("#lancPesoLbl").textContent = u === "un" ? "Quantidade (un)" : "Peso (kg)";
+  $("#lancPrecoLbl").textContent = u === "un" ? "Preço por unidade (R$)" : "Preço por kg (R$)";
+  $("#lancPeso").step = u === "un" ? "1" : "0.001";
+}
+function rotulosAjuste() {
+  const u = prodUnid($("#ajProduto").value);
+  $("#ajPesoLbl").textContent = u === "un" ? "Quantidade (un)" : "Peso (kg)";
+  $("#ajCustoLbl").textContent = u === "un" ? "Custo médio por unidade (R$)" : "Custo médio por kg (R$)";
+  $("#ajPeso").step = u === "un" ? "1" : "0.001";
+}
+$("#ajProduto").onchange = rotulosAjuste;
+
 function sugerirPreco() {
+  rotulosLanc();
   const p = state.produtos[$("#lancProduto").value];
   if (!p) return;
   $("#lancPreco").value = $("#lancTipo").value === "venda" ? (p.precoVenda || "") : (p.precoCompra || "");
@@ -300,6 +331,7 @@ $("#lancForm").addEventListener("submit", async (e) => {
     tipo: $("#lancTipo").value,
     produtoId: $("#lancProduto").value,
     produtoNome: prodNome($("#lancProduto").value),
+    unidade: prodUnid($("#lancProduto").value),
     peso: num($("#lancPeso").value),
     preco: num($("#lancPreco").value),
     total: num($("#lancPeso").value) * num($("#lancPreco").value),
@@ -350,22 +382,23 @@ function renderLancamentos() {
   for (const l of rows) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${dtLocal(l.data)}</td><td><span class="tag ${l.tipo}">${l.tipo}</span></td>
-      <td>${l.produtoNome || prodNome(l.produtoId)}</td><td>${kg(l.peso)}</td><td>${money(l.preco)}</td>
+      <td>${l.produtoNome || prodNome(l.produtoId)}</td><td>${qtd(l.peso, unidDe(l))}</td><td>${money(l.preco)}</td>
       <td>${money(l.total)}</td><td>${l.pessoa || "-"}</td><td>${l.obs || "-"}</td>
       <td><button class="btn mini" data-e="${l.id}">Editar</button>
           <button class="btn mini danger" data-d="${l.id}">Excluir</button></td>`;
     tb.appendChild(tr);
   }
-  const tPeso = rows.reduce((s, l) => s + num(l.peso), 0);
+  const tPeso = rows.filter((l) => unidDe(l) !== "un").reduce((s, l) => s + num(l.peso), 0);
+  const tUn = rows.filter((l) => unidDe(l) === "un").reduce((s, l) => s + num(l.peso), 0);
   const tC = rows.filter((l) => l.tipo === "compra").reduce((s, l) => s + num(l.total), 0);
   const tV = rows.filter((l) => l.tipo === "venda").reduce((s, l) => s + num(l.total), 0);
-  $("#tblLanc tfoot").innerHTML = `<tr><td colspan="3">${rows.length} registro(s)</td><td>${kg(tPeso)}</td>
+  $("#tblLanc tfoot").innerHTML = `<tr><td colspan="3">${rows.length} registro(s)</td><td>${dual(tPeso, tUn)}</td>
     <td>Compras</td><td>${money(tC)}</td><td>Vendas</td><td colspan="2">${money(tV)}</td></tr>`;
 
   tb.querySelectorAll("[data-e]").forEach((b) => (b.onclick = () => {
     const l = state.lancamentos[b.dataset.e]; state.editLanc = b.dataset.e;
     $("#lancData").value = toInputDT(new Date(l.data)); $("#lancTipo").value = l.tipo;
-    $("#lancProduto").value = l.produtoId; $("#lancPeso").value = l.peso;
+    $("#lancProduto").value = l.produtoId; rotulosLanc(); $("#lancPeso").value = l.peso;
     $("#lancPreco").value = l.preco; $("#lancPessoa").value = l.pessoa || ""; $("#lancObs").value = l.obs || "";
     calcTotal(); window.scrollTo({ top: 0, behavior: "smooth" });
   }));
@@ -383,6 +416,7 @@ $("#ajusteForm").addEventListener("submit", async (e) => {
     data: new Date().toISOString(),
     produtoId: $("#ajProduto").value,
     produtoNome: prodNome($("#ajProduto").value),
+    unidade: prodUnid($("#ajProduto").value),
     tipo: $("#ajTipo").value,
     peso: num($("#ajPeso").value),
     custo: num($("#ajCusto").value),
@@ -420,11 +454,13 @@ function renderEstoque() {
   const map = calcEstoque();
   const tb = $("#tblEstoque tbody"); tb.innerHTML = "";
   const ids = Object.keys(map);
-  if (!ids.length) { tb.innerHTML = `<tr><td colspan="7" class="empty">Sem movimentação.</td></tr>`; }
+  if (!ids.length) { tb.innerHTML = `<tr><td colspan="8" class="empty">Sem movimentação.</td></tr>`; }
   ids.sort((a, b) => prodNome(a).localeCompare(prodNome(b))).forEach((id) => {
     const m = map[id];
-    tb.insertAdjacentHTML("beforeend", `<tr><td>${prodNome(id)}</td><td>${kg(m.inicial)}</td><td>${kg(m.comprado)}</td>
-      <td>${kg(m.vendido)}</td><td>${kg(m.ajuste)}</td><td><strong>${kg(m.saldo)}</strong></td><td>${money(m.valor)}</td></tr>`);
+    const u = prodUnid(id);
+    const f = (v) => (u === "un" ? un(v) : kg(v));
+    tb.insertAdjacentHTML("beforeend", `<tr><td>${prodNome(id)}</td><td>${u}</td><td>${f(m.inicial)}</td><td>${f(m.comprado)}</td>
+      <td>${f(m.vendido)}</td><td>${f(m.ajuste)}</td><td><strong>${f(m.saldo)} ${u}</strong></td><td>${money(m.valor)}</td></tr>`);
   });
 
   const ta = $("#tblAjustes tbody"); ta.innerHTML = "";
@@ -432,7 +468,7 @@ function renderEstoque() {
   if (!list.length) ta.innerHTML = `<tr><td colspan="7" class="empty">Nenhum ajuste.</td></tr>`;
   list.forEach((a) => {
     ta.insertAdjacentHTML("beforeend", `<tr><td>${dtLocal(a.data)}</td><td>${a.produtoNome || prodNome(a.produtoId)}</td>
-      <td>${a.tipo}</td><td>${kg(a.peso)}</td><td>${money(a.custo)}</td><td>${a.obs || "-"}</td>
+      <td>${a.tipo}</td><td>${qtd(a.peso, unidDe(a))}</td><td>${money(a.custo)}</td><td>${a.obs || "-"}</td>
       <td><button class="btn mini danger" data-da="${a.id}">Excluir</button></td></tr>`);
   });
   ta.querySelectorAll("[data-da]").forEach((b) => (b.onclick = async () => {
@@ -440,9 +476,10 @@ function renderEstoque() {
     await remove(ref(db, "ajustes/" + b.dataset.da)); toast("Ajuste excluído.");
   }));
 
-  const total = Object.values(map).reduce((s, m) => s + m.saldo, 0);
+  const totalKg = Object.keys(map).filter((id) => prodUnid(id) !== "un").reduce((s, id) => s + map[id].saldo, 0);
+  const totalUn = Object.keys(map).filter((id) => prodUnid(id) === "un").reduce((s, id) => s + map[id].saldo, 0);
   const valor = Object.values(map).reduce((s, m) => s + m.valor, 0);
-  $("#kpiEstoque").textContent = kg(total);
+  $("#kpiEstoque").textContent = dual(totalKg, totalUn);
   $("#kpiEstoqueValor").textContent = money(valor);
 }
 
@@ -453,7 +490,10 @@ function renderDashboard() {
   const dia = arr.filter((l) => dayKey(l.data) === hoje);
   const compras = dia.filter((l) => l.tipo === "compra");
   const vendas = dia.filter((l) => l.tipo === "venda");
-  $("#kpiKgHoje").textContent = kg(compras.reduce((s, l) => s + num(l.peso), 0));
+  $("#kpiKgHoje").textContent = dual(
+    compras.filter((l) => unidDe(l) !== "un").reduce((s, l) => s + num(l.peso), 0),
+    compras.filter((l) => unidDe(l) === "un").reduce((s, l) => s + num(l.peso), 0),
+  );
   const gasto = compras.reduce((s, l) => s + num(l.total), 0);
   const venda = vendas.reduce((s, l) => s + num(l.total), 0);
   $("#kpiGastoHoje").textContent = money(gasto);
@@ -465,7 +505,7 @@ function renderDashboard() {
   if (!top.length) tb.innerHTML = `<tr><td colspan="6" class="empty">Sem lançamentos ainda.</td></tr>`;
   top.forEach((l) => tb.insertAdjacentHTML("beforeend",
     `<tr><td>${dtLocal(l.data)}</td><td>${l.produtoNome || prodNome(l.produtoId)}</td>
-     <td><span class="tag ${l.tipo}">${l.tipo}</span></td><td>${kg(l.peso)}</td><td>${money(l.preco)}</td><td>${money(l.total)}</td></tr>`));
+     <td><span class="tag ${l.tipo}">${l.tipo}</span></td><td>${qtd(l.peso, unidDe(l))}</td><td>${money(l.preco)}</td><td>${money(l.total)}</td></tr>`));
 }
 
 /* ------------------------------ relatórios ------------------------------- */
@@ -491,7 +531,8 @@ function relRows() {
   const arr = lancArray().filter((l) => dayKey(l.data) >= de && dayKey(l.data) <= ate);
   const map = {};
   arr.forEach((l) => {
-    const m = (map[l.produtoId] = map[l.produtoId] || { kgC: 0, rC: 0, kgV: 0, rV: 0 });
+    const m = (map[l.produtoId] = map[l.produtoId] || { kgC: 0, rC: 0, kgV: 0, rV: 0, unidade: unidDe(l) });
+    m.unidade = unidDe(l);
     if (l.tipo === "compra") { m.kgC += num(l.peso); m.rC += num(l.total); }
     else { m.kgV += num(l.peso); m.rV += num(l.total); }
   });
@@ -500,24 +541,26 @@ function relRows() {
 function renderRelatorio() {
   const map = relRows();
   const tb = $("#tblRel tbody"); tb.innerHTML = "";
-  let kgC = 0, kgV = 0, tC = 0, tV = 0;
+  let kgC = 0, kgV = 0, unC = 0, unV = 0, tC = 0, tV = 0;
   const ids = Object.keys(map);
   if (!ids.length) tb.innerHTML = `<tr><td colspan="6" class="empty">Sem dados no período.</td></tr>`;
   ids.sort((a, b) => prodNome(a).localeCompare(prodNome(b))).forEach((id) => {
-    const m = map[id]; kgC += m.kgC; kgV += m.kgV; tC += m.rC; tV += m.rV;
-    tb.insertAdjacentHTML("beforeend", `<tr><td>${prodNome(id)}</td><td>${kg(m.kgC)}</td><td>${money(m.rC)}</td>
-      <td>${kg(m.kgV)}</td><td>${money(m.rV)}</td><td>${money(m.rV - m.rC)}</td></tr>`);
+    const m = map[id]; tC += m.rC; tV += m.rV;
+    const u = prodUnid(id);
+    if (u === "un") { unC += m.kgC; unV += m.kgV; } else { kgC += m.kgC; kgV += m.kgV; }
+    tb.insertAdjacentHTML("beforeend", `<tr><td>${prodNome(id)}</td><td>${qtd(m.kgC, u)}</td><td>${money(m.rC)}</td>
+      <td>${qtd(m.kgV, u)}</td><td>${money(m.rV)}</td><td>${money(m.rV - m.rC)}</td></tr>`);
   });
-  $("#relKgC").textContent = kg(kgC); $("#relKgV").textContent = kg(kgV);
+  $("#relKgC").textContent = dual(kgC, unC); $("#relKgV").textContent = dual(kgV, unV);
   $("#relTotC").textContent = money(tC); $("#relTotV").textContent = money(tV);
   $("#relResult").textContent = money(tV - tC);
 }
 $("#relCsv").onclick = () => {
   const map = relRows();
-  const lines = [["Produto", "Kg compra", "R$ compra", "Kg venda", "R$ venda", "Resultado"]];
+  const lines = [["Produto", "Unidade", "Qtd compra", "R$ compra", "Qtd venda", "R$ venda", "Resultado"]];
   Object.keys(map).forEach((id) => {
     const m = map[id];
-    lines.push([prodNome(id), m.kgC, m.rC.toFixed(2), m.kgV, m.rV.toFixed(2), (m.rV - m.rC).toFixed(2)]);
+    lines.push([prodNome(id), prodUnid(id), m.kgC, m.rC.toFixed(2), m.kgV, m.rV.toFixed(2), (m.rV - m.rC).toFixed(2)]);
   });
   baixar(csv(lines), `relatorio-${periodoRel().label.replace(/[ /]/g, "_")}.csv`, "text/csv");
 };
@@ -560,11 +603,12 @@ $("#expJson").onclick = () => {
 };
 $("#expCsv").onclick = () => {
   const d = dumpAtual();
-  const rows = [["Data", "Tipo", "Produto", "Peso(kg)", "Preco/kg", "Total", "Pessoa", "Obs"]];
+  const rows = [["Data", "Tipo", "Produto", "Unidade", "Quantidade", "Preco unitario", "Total", "Pessoa", "Obs"]];
   Object.values(d.lancamentos || {})
     .sort((a, b) => new Date(a.data) - new Date(b.data))
-    .forEach((l) => rows.push([dtLocal(l.data), l.tipo, l.produtoNome || prodNome(l.produtoId),
-      num(l.peso).toFixed(3), num(l.preco).toFixed(2), num(l.total).toFixed(2), l.pessoa || "", l.obs || ""]));
+    .forEach((l) => rows.push([dtLocal(l.data), l.tipo, l.produtoNome || prodNome(l.produtoId), unidDe(l),
+      unidDe(l) === "un" ? String(num(l.peso)) : num(l.peso).toFixed(3),
+      num(l.preco).toFixed(2), num(l.total).toFixed(2), l.pessoa || "", l.obs || ""]));
   baixar(csv(rows), `lancamentos-${Date.now()}.csv`, "text/csv");
 };
 $("#impBtn").onclick = async () => {
@@ -595,6 +639,129 @@ $("#impBtn").onclick = async () => {
     toast("Dados importados.");
   } catch (err) {
     msg.className = "msg error"; msg.textContent = "Falha na importação: " + err.message;
+  }
+};
+
+
+/* ------------------------------ compra / venda (carrinho) ---------------- */
+$("#cxData").value = toInputDT(new Date());
+
+function rotulosCaixa() {
+  const u = prodUnid($("#cxProduto").value);
+  $("#cxQtdLbl").textContent = u === "un" ? "Quantidade (un)" : "Peso (kg)";
+  $("#cxPrecoLbl").textContent = u === "un" ? "Preço por unidade (R$)" : "Preço por kg (R$)";
+  $("#cxQtd").step = u === "un" ? "1" : "0.001";
+}
+function sugerirPrecoCaixa() {
+  rotulosCaixa();
+  const p = state.produtos[$("#cxProduto").value];
+  if (!p) return;
+  $("#cxPreco").value = $("#cxTipo").value === "venda" ? (p.precoVenda || "") : (p.precoCompra || "");
+  calcSubtotalCaixa();
+}
+function calcSubtotalCaixa() {
+  $("#cxSubtotal").textContent = "Subtotal: " + money(num($("#cxQtd").value) * num($("#cxPreco").value));
+}
+$("#cxProduto").onchange = sugerirPrecoCaixa;
+$("#cxTipo").onchange = sugerirPrecoCaixa;
+$("#cxQtd").oninput = calcSubtotalCaixa;
+$("#cxPreco").oninput = calcSubtotalCaixa;
+
+$("#cxItemForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const pid = $("#cxProduto").value;
+  if (!pid) return toast("Cadastre um produto primeiro.", true);
+  const q = num($("#cxQtd").value);
+  const pr = num($("#cxPreco").value);
+  if (q <= 0) return toast("Informe a quantidade.", true);
+  state.carrinho.push({
+    produtoId: pid,
+    produtoNome: prodNome(pid),
+    unidade: prodUnid(pid),
+    peso: q,
+    preco: pr,
+    total: q * pr,
+    obs: $("#cxItemObs").value.trim(),
+  });
+  $("#cxQtd").value = ""; $("#cxItemObs").value = "";
+  calcSubtotalCaixa();
+  renderCarrinho();
+  toast("Item adicionado ao carrinho.");
+});
+
+function renderCarrinho() {
+  const tb = $("#tblCaixa tbody"); tb.innerHTML = "";
+  if (!state.carrinho.length) {
+    tb.innerHTML = `<tr><td colspan="6" class="empty">Nenhum item adicionado.</td></tr>`;
+    $("#tblCaixa tfoot").innerHTML = "";
+  } else {
+    state.carrinho.forEach((it, i) => {
+      tb.insertAdjacentHTML("beforeend", `<tr><td>${it.produtoNome}</td><td>${qtd(it.peso, it.unidade)}</td>
+        <td>${money(it.preco)}</td><td>${money(it.total)}</td><td>${it.obs || "-"}</td>
+        <td><button class="btn mini danger" data-rm="${i}">Remover</button></td></tr>`);
+    });
+    const tKg = state.carrinho.filter((i) => i.unidade !== "un").reduce((s, i) => s + num(i.peso), 0);
+    const tUn = state.carrinho.filter((i) => i.unidade === "un").reduce((s, i) => s + num(i.peso), 0);
+    const tVal = state.carrinho.reduce((s, i) => s + num(i.total), 0);
+    $("#tblCaixa tfoot").innerHTML = `<tr><td>${state.carrinho.length} item(ns)</td><td>${dual(tKg, tUn)}</td>
+      <td>Total</td><td colspan="3">${money(tVal)}</td></tr>`;
+    tb.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = () => {
+      state.carrinho.splice(Number(b.dataset.rm), 1);
+      renderCarrinho();
+    }));
+  }
+  const kgT = state.carrinho.filter((i) => i.unidade !== "un").reduce((s, i) => s + num(i.peso), 0);
+  const unT = state.carrinho.filter((i) => i.unidade === "un").reduce((s, i) => s + num(i.peso), 0);
+  $("#cxTotKg").textContent = kg(kgT) + " kg";
+  $("#cxTotUn").textContent = un(unT) + " un";
+  $("#cxTotItens").textContent = String(state.carrinho.length);
+  $("#cxTotValor").textContent = money(state.carrinho.reduce((s, i) => s + num(i.total), 0));
+}
+renderCarrinho();
+
+$("#cxLimpar").onclick = () => {
+  if (!state.carrinho.length) return;
+  if (!confirm("Limpar todos os itens do carrinho?")) return;
+  state.carrinho = [];
+  renderCarrinho();
+  toast("Carrinho limpo.");
+};
+
+$("#cxFinalizar").onclick = async () => {
+  if (!guard()) return;
+  if (!state.carrinho.length) return toast("Adicione ao menos um item.", true);
+  const dataISO = new Date($("#cxData").value || toInputDT(new Date())).toISOString();
+  const tipo = $("#cxTipo").value;
+  const pessoa = $("#cxPessoa").value.trim();
+  const obsGeral = $("#cxObs").value.trim();
+  const agora = Date.now();
+  const opId = "op" + agora;
+  try {
+    /* cada item vira um lançamento independente, igual ao cadastro manual */
+    for (const it of state.carrinho) {
+      await push(ref(db, "lancamentos"), {
+        data: dataISO,
+        tipo,
+        produtoId: it.produtoId,
+        produtoNome: it.produtoNome,
+        unidade: it.unidade,
+        peso: it.peso,
+        preco: it.preco,
+        total: it.total,
+        pessoa,
+        obs: [obsGeral, it.obs].filter(Boolean).join(" | "),
+        operacaoId: opId,
+        criadoEm: agora,
+      });
+    }
+    const n = state.carrinho.length;
+    state.carrinho = [];
+    renderCarrinho();
+    $("#cxPessoa").value = ""; $("#cxObs").value = "";
+    $("#cxData").value = toInputDT(new Date());
+    toast(`${n} lançamento(s) registrado(s) com sucesso.`);
+  } catch (err) {
+    toast("Falha ao finalizar: " + err.message, true);
   }
 };
 
