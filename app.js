@@ -93,17 +93,17 @@ $("#themeBtn").onclick = toggleTheme;
 
 /* ------------------------------ interface editável ----------------------- */
 const UI_DEFAULT = {
-  brand: "Sistema Reciclagem",
-  loginTitle: "Acesso Administrativo",
+  brand: "Sistema Gerencial Sucata São José",
+  loginTitle: "Sucata São José",
   loginSubtitle: "Entre com suas credenciais",
-  logo: "/logo.png",
+  logo: "logo.png",
   primary: "#22c55e",
   accent: "#38bdf8",
   radius: 12,
   font: 15,
   theme: "dark",
   moeda: "R$",
-  menu: "Painel,Lançamentos,Estoque,Produtos,Relatórios,Import/Export,Interface",
+  menu: "Painel,Compra/Venda,Lançamentos,Estoque,Produtos,Relatórios,Import/Export,Interface",
 };
 function applyUI(ui) {
   const u = { ...UI_DEFAULT, ...(ui || {}) };
