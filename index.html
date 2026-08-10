@@ -87,6 +87,7 @@
       <button class="nav-item" data-view="dados">💾 <span>Import/Export</span></button>
       <button class="nav-item" data-view="admin">⚙️ <span>Interface</span></button>
       <button class="nav-item" data-view="caixa">🛒 <span>Compra/Venda</span></button>
+      <button class="nav-item" data-view="financeiro">💰 <span>Financeiro</span></button>
       <div class="sidebar-foot"><span id="userBadge"></span></div>
     </nav>
     <div class="backdrop" id="sidebarBackdrop"></div>
@@ -103,6 +104,7 @@
           <div class="card"><span class="card-label">Lucro previsto hoje</span><strong id="kpiLucroHoje">R$ 0,00</strong></div>
           <div class="card"><span class="card-label">Estoque total</span><strong id="kpiEstoque">0</strong></div>
           <div class="card"><span class="card-label">Valor de estoque</span><strong id="kpiEstoqueValor">R$ 0,00</strong></div>
+          <div class="card"><span class="card-label">Saldo em caixa</span><strong id="kpiCaixa">R$ 0,00</strong></div>
         </div>
         <h3 class="sub">Últimos lançamentos</h3>
         <div class="table-wrap"><table id="tblUltimos"><thead><tr>
@@ -122,7 +124,9 @@
           <div><label id="lancPesoLbl">Peso (kg)</label><input type="number" step="0.001" min="0" id="lancPeso" required /></div>
           <div><label id="lancPrecoLbl">Preço por kg (R$)</label><input type="number" step="0.01" min="0" id="lancPreco" required /></div>
           <div><label>Fornecedor / Cliente</label><input type="text" id="lancPessoa" placeholder="Opcional" /></div>
+          <div><label>Conta / caixa</label><select id="lancConta"></select></div>
           <div class="full"><label>Observação</label><input type="text" id="lancObs" placeholder="Opcional" /></div>
+
           <div class="full row gap">
             <span class="total-preview" id="lancTotal">Total: R$ 0,00</span>
             <button type="submit" class="btn primary">Salvar lançamento</button>
@@ -140,8 +144,9 @@
         </div>
 
         <div class="table-wrap"><table id="tblLanc"><thead><tr>
-          <th>Data/Hora</th><th>Tipo</th><th>Produto</th><th>Qtd.</th><th>Preço unit.</th><th>Total</th><th>Pessoa</th><th>Obs</th><th></th>
+          <th>Data/Hora</th><th>Tipo</th><th>Produto</th><th>Qtd.</th><th>Preço unit.</th><th>Total</th><th>Pessoa</th><th>Conta</th><th>Obs</th><th></th>
         </tr></thead><tbody></tbody><tfoot></tfoot></table></div>
+
       </section>
 
       <!-- ESTOQUE -->
@@ -265,7 +270,7 @@
           <div><label>Tema padrão</label><select id="uiTheme"><option value="dark">Escuro</option><option value="light">Claro</option></select></div>
           <div><label>Moeda</label><input type="text" id="uiMoeda" placeholder="R$" /></div>
           <div class="full"><label>Rótulos do menu (separados por vírgula)</label>
-            <input type="text" id="uiMenu" placeholder="Painel,Lançamentos,Estoque,Produtos,Relatórios,Import/Export,Interface" /></div>
+            <input type="text" id="uiMenu" placeholder="Painel,Lançamentos,Estoque,Produtos,Relatórios,Import/Export,Interface,Compra/Venda,Financeiro" /></div>
           <div class="full row gap">
             <button class="btn primary" type="submit">Salvar interface</button>
             <button class="btn ghost" type="button" id="uiReset">Restaurar padrão</button>
@@ -284,6 +289,7 @@
             <option value="compra">Compra</option><option value="venda">Venda</option>
           </select></div>
           <div><label>Fornecedor / Cliente</label><input type="text" id="cxPessoa" placeholder="Opcional" /></div>
+          <div><label>Conta / caixa</label><select id="cxConta"></select></div>
           <div class="full"><label>Observação da operação</label><input type="text" id="cxObs" placeholder="Opcional" /></div>
         </form>
 
@@ -317,6 +323,121 @@
           </div>
         </div>
       </section>
+
+      <!-- FINANCEIRO -->
+      <section class="view hidden" id="view-financeiro">
+        <h2 class="view-title">Financeiro</h2>
+
+        <div class="cards">
+          <div class="card"><span class="card-label">Saldo em caixa (todas as contas)</span><strong id="finSaldoTotal">R$ 0,00</strong></div>
+          <div class="card"><span class="card-label">Entradas do mês</span><strong id="finEntradasMes">R$ 0,00</strong></div>
+          <div class="card"><span class="card-label">Saídas do mês</span><strong id="finSaidasMes">R$ 0,00</strong></div>
+          <div class="card"><span class="card-label">Resultado do mês</span><strong id="finResultadoMes">R$ 0,00</strong></div>
+          <div class="card"><span class="card-label">Contas a pagar (pendente)</span><strong id="finAPagar">R$ 0,00</strong></div>
+          <div class="card"><span class="card-label">A receber (pendente)</span><strong id="finAReceber">R$ 0,00</strong></div>
+        </div>
+
+        <h3 class="sub">Contas / Caixas</h3>
+        <form id="finContaForm" class="panel grid-form">
+          <div><label>Nome da conta</label><input type="text" id="finContaNome" placeholder="Caixa da loja, Banco X..." required /></div>
+          <div><label>Tipo</label><select id="finContaTipo">
+            <option value="caixa">Caixa (dinheiro)</option>
+            <option value="banco">Conta bancária</option>
+            <option value="digital">Carteira digital / PIX</option>
+          </select></div>
+          <div><label>Saldo inicial (R$)</label><input type="number" step="0.01" id="finContaSaldo" /></div>
+          <div><label>Conta padrão das operações</label><select id="finContaPadrao">
+            <option value="nao">Não</option><option value="sim">Sim</option>
+          </select></div>
+          <div class="full row gap">
+            <button class="btn primary" type="submit">Salvar conta</button>
+            <button class="btn ghost" type="button" id="finContaCancel">Cancelar edição</button>
+          </div>
+        </form>
+        <div class="table-wrap"><table id="tblFinContas"><thead><tr>
+          <th>Conta</th><th>Tipo</th><th>Padrão</th><th>Saldo inicial</th><th>Movimentado</th><th>Saldo atual</th><th></th>
+        </tr></thead><tbody></tbody><tfoot></tfoot></table></div>
+
+        <h3 class="sub">Novo movimento financeiro</h3>
+        <form id="finMovForm" class="panel grid-form">
+          <div><label>Data</label><input type="datetime-local" id="finData" required /></div>
+          <div><label>Natureza</label><select id="finTipo">
+            <option value="entrada">Entrada (recebimento)</option>
+            <option value="saida">Saída (pagamento)</option>
+          </select></div>
+          <div><label>Categoria</label><select id="finCategoria"></select></div>
+          <div><label>Conta</label><select id="finConta" required></select></div>
+          <div><label>Valor (R$)</label><input type="number" step="0.01" min="0" id="finValor" required /></div>
+          <div><label>Forma de pagamento</label><select id="finForma">
+            <option value="dinheiro">Dinheiro</option><option value="pix">PIX</option>
+            <option value="transferencia">Transferência</option><option value="cartao">Cartão</option>
+            <option value="boleto">Boleto</option><option value="cheque">Cheque</option>
+          </select></div>
+          <div><label>Vencimento</label><input type="date" id="finVenc" /></div>
+          <div><label>Situação</label><select id="finStatus">
+            <option value="pago">Pago / recebido</option>
+            <option value="pendente">Pendente</option>
+          </select></div>
+          <div><label>Pessoa / empresa</label><input type="text" id="finPessoa" placeholder="Opcional" /></div>
+          <div class="full"><label>Descrição</label><input type="text" id="finDesc" placeholder="Ex.: Conta de luz — julho" /></div>
+          <div class="full row gap">
+            <button class="btn primary" type="submit">Salvar movimento</button>
+            <button class="btn ghost" type="button" id="finMovCancel">Cancelar edição</button>
+          </div>
+        </form>
+
+        <h3 class="sub">Transferência entre contas</h3>
+        <form id="finTransfForm" class="panel grid-form">
+          <div><label>De</label><select id="finTrDe" required></select></div>
+          <div><label>Para</label><select id="finTrPara" required></select></div>
+          <div><label>Valor (R$)</label><input type="number" step="0.01" min="0" id="finTrValor" required /></div>
+          <div><label>Observação</label><input type="text" id="finTrObs" placeholder="Opcional" /></div>
+          <div class="full"><button class="btn primary" type="submit">Transferir</button></div>
+        </form>
+
+        <h3 class="sub">Contas a pagar / receber pendentes</h3>
+        <div class="table-wrap"><table id="tblFinPend"><thead><tr>
+          <th>Vencimento</th><th>Descrição</th><th>Categoria</th><th>Natureza</th><th>Valor</th><th>Conta</th><th></th>
+        </tr></thead><tbody></tbody></table></div>
+
+        <h3 class="sub">Extrato / movimentações</h3>
+        <div class="panel filters">
+          <div><label>De</label><input type="date" id="finFDe" /></div>
+          <div><label>Até</label><input type="date" id="finFAte" /></div>
+          <div><label>Conta</label><select id="finFConta"><option value="">Todas</option></select></div>
+          <div><label>Natureza</label><select id="finFTipo"><option value="">Todas</option><option value="entrada">Entradas</option><option value="saida">Saídas</option></select></div>
+          <div><label>Origem</label><select id="finFOrigem">
+            <option value="">Todas</option><option value="manual">Manuais</option><option value="operacional">Compras/Vendas</option>
+          </select></div>
+          <div><label>Buscar</label><input type="text" id="finFBusca" placeholder="Descrição, pessoa, categoria..." /></div>
+          <div class="row gap end">
+            <button class="btn" id="finFLimpar">Limpar</button>
+            <button class="btn ghost" id="finCsv">Exportar CSV</button>
+          </div>
+        </div>
+        <div class="table-wrap"><table id="tblFinMov"><thead><tr>
+          <th>Data</th><th>Descrição</th><th>Categoria</th><th>Origem</th><th>Conta</th><th>Entrada</th><th>Saída</th><th>Saldo</th><th></th>
+        </tr></thead><tbody></tbody><tfoot></tfoot></table></div>
+
+        <h3 class="sub">Resumo por categoria (período filtrado)</h3>
+        <div class="table-wrap"><table id="tblFinCat"><thead><tr>
+          <th>Categoria</th><th>Entradas</th><th>Saídas</th><th>Saldo</th>
+        </tr></thead><tbody></tbody></table></div>
+
+        <h3 class="sub">Relatórios financeiros em PDF</h3>
+        <div class="panel filters">
+          <div><label>Período</label><select id="relTipo">
+            <option value="dia">Diário</option><option value="mes" selected>Mensal</option><option value="ano">Anual</option>
+          </select></div>
+          <div id="relCampoDia" class="hidden"><label>Dia</label><input type="date" id="relDia" /></div>
+          <div id="relCampoMes"><label>Mês</label><input type="month" id="relMes" /></div>
+          <div id="relCampoAno" class="hidden"><label>Ano</label><input type="number" id="relAno" min="2000" max="2100" step="1" /></div>
+          <div><label>Conta</label><select id="relConta"><option value="">Todas</option></select></div>
+          <div class="row gap end"><button class="btn primary" id="relPdf">Imprimir / salvar PDF</button></div>
+        </div>
+      </section>
+
+
 
     </main>
   </div>

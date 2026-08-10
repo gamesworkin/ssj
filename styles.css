@@ -202,3 +202,14 @@ tfoot td{font-weight:700}
   body{background:#fff;color:#000}
   .table-wrap,.card{box-shadow:none;border-color:#999}
 }
+
+/* ---------- Financeiro ---------- */
+.tag.entrada{background:color-mix(in srgb,var(--primary) 22%,transparent);color:var(--primary)}
+.tag.saida{background:color-mix(in srgb,var(--danger) 20%,transparent);color:var(--danger)}
+.tag.pendente{background:color-mix(in srgb,#f59e0b 24%,transparent);color:#f59e0b}
+.tag.pago{background:color-mix(in srgb,var(--primary) 18%,transparent);color:var(--primary)}
+.tag.operacional{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+.tag.manual{background:color-mix(in srgb,var(--muted) 26%,transparent);color:var(--muted)}
+.val-pos{color:var(--primary);font-weight:600}
+.val-neg{color:var(--danger);font-weight:600}
+tr.vencido td{background:color-mix(in srgb,var(--danger) 8%,transparent)}

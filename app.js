@@ -72,7 +72,7 @@ function loader(on, text = "Carregando sistema...") {
 }
 
 /* ------------------------------ estado ----------------------------------- */
-const state = { produtos: {}, lancamentos: {}, ajustes: {}, ui: {}, user: null, editLanc: null, editProd: null, carrinho: [] };
+const state = { produtos: {}, lancamentos: {}, ajustes: {}, contas: {}, financeiro: {}, ui: {}, user: null, editLanc: null, editProd: null, editMov: null, editConta: null, carrinho: [] };
 const isAdmin = () => state.user && state.user.email === ADMIN_EMAIL;
 function guard() {
   if (!isAdmin()) { toast(`Somente ${ADMIN_EMAIL} pode gravar dados.`, true); return false; }
@@ -103,7 +103,7 @@ const UI_DEFAULT = {
   font: 15,
   theme: "dark",
   moeda: "R$",
-  menu: "Painel,Compra/Venda,Lançamentos,Estoque,Produtos,Relatórios,Import/Export,Interface",
+  menu: "Painel,Lançamentos,Estoque,Produtos,Relatórios,Import/Export,Interface,Compra/Venda,Financeiro",
 };
 function applyUI(ui) {
   const u = { ...UI_DEFAULT, ...(ui || {}) };
@@ -235,6 +235,8 @@ function startListeners() {
   onValue(ref(db, "produtos"), (s) => { state.produtos = s.val() || {}; renderProdutos(); fillProductSelects(); renderAll(); done(); });
   onValue(ref(db, "lancamentos"), (s) => { state.lancamentos = s.val() || {}; renderAll(); done(); });
   onValue(ref(db, "ajustes"), (s) => { state.ajustes = s.val() || {}; renderAll(); done(); });
+  onValue(ref(db, "contas"), (s) => { state.contas = s.val() || {}; fillContaSelects(); renderAll(); done(); });
+  onValue(ref(db, "financeiro"), (s) => { state.financeiro = s.val() || {}; renderAll(); done(); });
 }
 function done() { if (!loadedOnce) { loadedOnce = true; setTimeout(() => loader(false), 500); } }
 
@@ -336,10 +338,12 @@ $("#lancForm").addEventListener("submit", async (e) => {
     preco: num($("#lancPreco").value),
     total: num($("#lancPeso").value) * num($("#lancPreco").value),
     pessoa: $("#lancPessoa").value.trim(),
+    contaId: $("#lancConta").value || contaPadraoId(),
     obs: $("#lancObs").value.trim(),
     criadoEm: Date.now(),
   };
   if (!l.produtoId) return toast("Cadastre um produto primeiro.", true);
+  if (!l.contaId) return toast("Cadastre uma conta/caixa no Financeiro antes de lançar.", true);
   if (state.editLanc) await update(ref(db, "lancamentos/" + state.editLanc), l);
   else await push(ref(db, "lancamentos"), l);
   state.editLanc = null;
@@ -348,7 +352,8 @@ $("#lancForm").addEventListener("submit", async (e) => {
   calcTotal();
   toast("Lançamento salvo.");
 });
-$("#lancCancel").onclick = () => { state.editLanc = null; $("#lancForm").reset(); $("#lancData").value = toInputDT(new Date()); };
+$("#lancCancel").onclick = () => { state.editLanc = null; $("#lancForm").reset(); $("#lancData").value = toInputDT(new Date()); fillContaSelects(); };
+
 
 ["#fDe", "#fAte", "#fProduto", "#fTipo", "#fBusca"].forEach((s) => {
   $(s).addEventListener("input", renderLancamentos);
@@ -378,12 +383,12 @@ function aplicaFiltros(arr) {
 function renderLancamentos() {
   const rows = aplicaFiltros(lancArray());
   const tb = $("#tblLanc tbody"); tb.innerHTML = "";
-  if (!rows.length) { tb.innerHTML = `<tr><td colspan="9" class="empty">Nenhum lançamento no filtro.</td></tr>`; $("#tblLanc tfoot").innerHTML = ""; return; }
+  if (!rows.length) { tb.innerHTML = `<tr><td colspan="10" class="empty">Nenhum lançamento no filtro.</td></tr>`; $("#tblLanc tfoot").innerHTML = ""; return; }
   for (const l of rows) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${dtLocal(l.data)}</td><td><span class="tag ${l.tipo}">${l.tipo}</span></td>
       <td>${l.produtoNome || prodNome(l.produtoId)}</td><td>${qtd(l.peso, unidDe(l))}</td><td>${money(l.preco)}</td>
-      <td>${money(l.total)}</td><td>${l.pessoa || "-"}</td><td>${l.obs || "-"}</td>
+      <td>${money(l.total)}</td><td>${l.pessoa || "-"}</td><td>${contaNome(l.contaId || contaPadraoId())}</td><td>${l.obs || "-"}</td>
       <td><button class="btn mini" data-e="${l.id}">Editar</button>
           <button class="btn mini danger" data-d="${l.id}">Excluir</button></td>`;
     tb.appendChild(tr);
@@ -393,15 +398,17 @@ function renderLancamentos() {
   const tC = rows.filter((l) => l.tipo === "compra").reduce((s, l) => s + num(l.total), 0);
   const tV = rows.filter((l) => l.tipo === "venda").reduce((s, l) => s + num(l.total), 0);
   $("#tblLanc tfoot").innerHTML = `<tr><td colspan="3">${rows.length} registro(s)</td><td>${dual(tPeso, tUn)}</td>
-    <td>Compras</td><td>${money(tC)}</td><td>Vendas</td><td colspan="2">${money(tV)}</td></tr>`;
+    <td>Compras</td><td>${money(tC)}</td><td>Vendas</td><td colspan="3">${money(tV)}</td></tr>`;
 
   tb.querySelectorAll("[data-e]").forEach((b) => (b.onclick = () => {
     const l = state.lancamentos[b.dataset.e]; state.editLanc = b.dataset.e;
     $("#lancData").value = toInputDT(new Date(l.data)); $("#lancTipo").value = l.tipo;
     $("#lancProduto").value = l.produtoId; rotulosLanc(); $("#lancPeso").value = l.peso;
     $("#lancPreco").value = l.preco; $("#lancPessoa").value = l.pessoa || ""; $("#lancObs").value = l.obs || "";
+    $("#lancConta").value = l.contaId && state.contas[l.contaId] ? l.contaId : contaPadraoId();
     calcTotal(); window.scrollTo({ top: 0, behavior: "smooth" });
   }));
+
   tb.querySelectorAll("[data-d]").forEach((b) => (b.onclick = async () => {
     if (!guard() || !confirm("Excluir lançamento?")) return;
     await remove(ref(db, "lancamentos/" + b.dataset.d)); toast("Lançamento excluído.");
@@ -587,13 +594,15 @@ function dumpAtual() {
   const escopo = $("#expEscopo").value;
   const de = $("#expDe").value, ate = $("#expAte").value;
   if (escopo === "full") {
-    return { config: { ui: state.ui }, produtos: state.produtos, lancamentos: state.lancamentos, ajustes: state.ajustes };
+    return { config: { ui: state.ui }, produtos: state.produtos, lancamentos: state.lancamentos, ajustes: state.ajustes, contas: state.contas, financeiro: state.financeiro };
   }
   return {
     config: { ui: state.ui },
     produtos: state.produtos,
     lancamentos: filtraPeriodoObj(state.lancamentos, de, ate),
     ajustes: filtraPeriodoObj(state.ajustes, de, ate),
+    contas: state.contas,
+    financeiro: filtraPeriodoObj(state.financeiro, de, ate),
   };
 }
 $("#expJson").onclick = () => {
@@ -626,12 +635,16 @@ $("#impBtn").onclick = async () => {
         produtos: data.produtos || {},
         lancamentos: data.lancamentos || {},
         ajustes: data.ajustes || {},
+        contas: data.contas || {},
+        financeiro: data.financeiro || {},
       });
     } else {
       const upd = {};
       Object.entries(data.produtos || {}).forEach(([k, v]) => (upd["produtos/" + k] = v));
       Object.entries(data.lancamentos || {}).forEach(([k, v]) => (upd["lancamentos/" + k] = v));
       Object.entries(data.ajustes || {}).forEach(([k, v]) => (upd["ajustes/" + k] = v));
+      Object.entries(data.contas || {}).forEach(([k, v]) => (upd["contas/" + k] = v));
+      Object.entries(data.financeiro || {}).forEach(([k, v]) => (upd["financeiro/" + k] = v));
       if (data.config && data.config.ui) upd["config/ui"] = data.config.ui;
       await update(ref(db, "/"), upd);
     }
@@ -734,6 +747,8 @@ $("#cxFinalizar").onclick = async () => {
   const tipo = $("#cxTipo").value;
   const pessoa = $("#cxPessoa").value.trim();
   const obsGeral = $("#cxObs").value.trim();
+  const contaId = ($("#cxConta") && $("#cxConta").value) || contaPadraoId();
+  if (!contaId) return toast("Cadastre uma conta/caixa no Financeiro antes de lançar.", true);
   const agora = Date.now();
   const opId = "op" + agora;
   try {
@@ -749,6 +764,7 @@ $("#cxFinalizar").onclick = async () => {
         preco: it.preco,
         total: it.total,
         pessoa,
+        contaId,
         obs: [obsGeral, it.obs].filter(Boolean).join(" | "),
         operacaoId: opId,
         criadoEm: agora,
@@ -771,4 +787,477 @@ function renderAll() {
   renderLancamentos();
   renderEstoque();
   renderRelatorio();
+  renderFinanceiro();
 }
+
+/* ========================================================================== */
+/* ============================== FINANCEIRO ================================ */
+/* ========================================================================== */
+
+const CAT_ENTRADA = [
+  "Venda de material", "Depósito", "Aporte de sócio", "Empréstimo recebido",
+  "Rendimento", "Devolução", "Outras receitas",
+];
+const CAT_SAIDA = [
+  "Compra de material", "Aluguel", "Água", "Luz", "Internet", "Telefone",
+  "Combustível", "Salários", "Encargos / impostos", "Manutenção",
+  "Fornecedores", "Retirada / pró-labore", "Transporte / frete", "Outras despesas",
+];
+
+$("#finData").value = toInputDT(new Date());
+
+function fillCategorias() {
+  const lista = $("#finTipo").value === "entrada" ? CAT_ENTRADA : CAT_SAIDA;
+  const atual = $("#finCategoria").value;
+  $("#finCategoria").innerHTML = lista.map((c) => `<option value="${c}">${c}</option>`).join("");
+  if (lista.includes(atual)) $("#finCategoria").value = atual;
+}
+$("#finTipo").onchange = fillCategorias;
+fillCategorias();
+
+/* --------------------------- contas / caixas ------------------------------ */
+function contasArray() {
+  return Object.entries(state.contas)
+    .map(([id, c]) => ({ id, ...c }))
+    .sort((a, b) => String(a.nome).localeCompare(String(b.nome)));
+}
+function contaPadraoId() {
+  const list = contasArray();
+  const p = list.find((c) => c.padrao);
+  return (p || list[0] || {}).id || "";
+}
+function contaNome(id) { return state.contas[id] ? state.contas[id].nome : (id ? "(conta removida)" : "Sem conta"); }
+
+function fillContaSelects() {
+  const opts = contasArray().map((c) => `<option value="${c.id}">${c.nome}</option>`).join("");
+  const padrao = contaPadraoId();
+  ["#finConta", "#finTrDe", "#finTrPara", "#cxConta", "#lancConta"].forEach((sel) => {
+    const el = $(sel); if (!el) return;
+    const atual = el.value;
+    el.innerHTML = opts;
+    if (atual && state.contas[atual]) el.value = atual;
+    else if ((sel === "#finConta" || sel === "#cxConta" || sel === "#lancConta") && padrao) el.value = padrao;
+  });
+  const lista = contasArray();
+  if (lista.length > 1 && $("#finTrPara").value === $("#finTrDe").value) {
+    $("#finTrPara").value = lista.find((c) => c.id !== $("#finTrDe").value).id;
+  }
+  ["#finFConta", "#relConta"].forEach((sel) => {
+    const f = $(sel); if (!f) return;
+    const atualF = f.value;
+    f.innerHTML = `<option value="">Todas</option>` + opts;
+    if (atualF && state.contas[atualF]) f.value = atualF;
+  });
+}
+
+
+$("#finContaForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!guard()) return;
+  const c = {
+    nome: $("#finContaNome").value.trim(),
+    tipo: $("#finContaTipo").value,
+    saldoInicial: num($("#finContaSaldo").value),
+    padrao: $("#finContaPadrao").value === "sim",
+  };
+  if (!c.nome) return toast("Informe o nome da conta.", true);
+  if (c.padrao) {
+    const upd = {};
+    contasArray().forEach((o) => { if (o.id !== state.editConta) upd["contas/" + o.id + "/padrao"] = false; });
+    if (Object.keys(upd).length) await update(ref(db, "/"), upd);
+  }
+  if (state.editConta) await update(ref(db, "contas/" + state.editConta), c);
+  else await push(ref(db, "contas"), c);
+  state.editConta = null;
+  e.target.reset();
+  toast("Conta salva.");
+});
+$("#finContaCancel").onclick = () => { state.editConta = null; $("#finContaForm").reset(); };
+
+/* --------------------------- movimentos ----------------------------------- */
+/* Movimentos operacionais são derivados automaticamente dos lançamentos de
+   compra e venda, então nunca ficam fora de sincronia com o estoque.        */
+function movimentosOperacionais() {
+  const padrao = contaPadraoId();
+  return Object.entries(state.lancamentos).map(([id, l]) => ({
+    id: "op:" + id,
+    origem: "operacional",
+    data: l.data,
+    tipo: l.tipo === "venda" ? "entrada" : "saida",
+    categoria: l.tipo === "venda" ? "Venda de material" : "Compra de material",
+    contaId: l.contaId || padrao,
+    valor: num(l.total),
+    forma: "dinheiro",
+    status: "pago",
+    pessoa: l.pessoa || "",
+    desc: `${l.tipo === "venda" ? "Venda" : "Compra"} de ${l.produtoNome || prodNome(l.produtoId)} (${qtd(l.peso, unidDe(l))})`,
+    lancamentoId: id,
+  }));
+}
+function movimentosManuais() {
+  return Object.entries(state.financeiro).map(([id, m]) => ({ id, origem: "manual", ...m }));
+}
+function movimentosTodos() {
+  return [...movimentosManuais(), ...movimentosOperacionais()]
+    .sort((a, b) => new Date(b.data) - new Date(a.data));
+}
+function movPago(m) { return (m.status || "pago") !== "pendente"; }
+function movSinal(m) { return m.tipo === "entrada" ? 1 : -1; }
+
+function saldoContas() {
+  const map = {};
+  contasArray().forEach((c) => (map[c.id] = { inicial: num(c.saldoInicial), mov: 0 }));
+  movimentosTodos().forEach((m) => {
+    if (!movPago(m)) return;
+    if (!map[m.contaId]) map[m.contaId] = { inicial: 0, mov: 0 };
+    map[m.contaId].mov += movSinal(m) * num(m.valor);
+  });
+  Object.values(map).forEach((v) => (v.saldo = v.inicial + v.mov));
+  return map;
+}
+function saldoCaixaTotal() { return Object.values(saldoContas()).reduce((s, v) => s + v.saldo, 0); }
+
+$("#finMovForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!guard()) return;
+  if (!contasArray().length) return toast("Cadastre uma conta/caixa primeiro.", true);
+  const m = {
+    data: new Date($("#finData").value || new Date()).toISOString(),
+    tipo: $("#finTipo").value,
+    categoria: $("#finCategoria").value,
+    contaId: $("#finConta").value,
+    valor: num($("#finValor").value),
+    forma: $("#finForma").value,
+    venc: $("#finVenc").value || "",
+    status: $("#finStatus").value,
+    pessoa: $("#finPessoa").value.trim(),
+    desc: $("#finDesc").value.trim(),
+    criadoEm: Date.now(),
+  };
+  if (m.valor <= 0) return toast("Informe um valor maior que zero.", true);
+  if (state.editMov) await update(ref(db, "financeiro/" + state.editMov), m);
+  else await push(ref(db, "financeiro"), m);
+  state.editMov = null;
+  $("#finValor").value = ""; $("#finDesc").value = ""; $("#finPessoa").value = ""; $("#finVenc").value = "";
+  $("#finData").value = toInputDT(new Date());
+  toast("Movimento financeiro salvo.");
+});
+$("#finMovCancel").onclick = () => {
+  state.editMov = null;
+  $("#finMovForm").reset(); fillCategorias();
+  $("#finData").value = toInputDT(new Date()); fillContaSelects();
+};
+
+/* --------------------------- transferência -------------------------------- */
+$("#finTransfForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!guard()) return;
+  const de = $("#finTrDe").value, para = $("#finTrPara").value, v = num($("#finTrValor").value);
+  if (!de || !para || de === para) return toast("Escolha duas contas diferentes.", true);
+  if (v <= 0) return toast("Informe um valor válido.", true);
+  const obs = $("#finTrObs").value.trim();
+  const agora = new Date().toISOString();
+  const tid = "tr" + Date.now();
+  const base = { data: agora, valor: v, categoria: "Transferência", forma: "transferencia", status: "pago", transferId: tid, criadoEm: Date.now(), pessoa: "" };
+  await push(ref(db, "financeiro"), { ...base, tipo: "saida", contaId: de, desc: `Transferência para ${contaNome(para)}${obs ? " — " + obs : ""}` });
+  await push(ref(db, "financeiro"), { ...base, tipo: "entrada", contaId: para, desc: `Transferência de ${contaNome(de)}${obs ? " — " + obs : ""}` });
+  $("#finTrValor").value = ""; $("#finTrObs").value = "";
+  toast("Transferência registrada.");
+});
+
+/* --------------------------- filtros / extrato ---------------------------- */
+["#finFDe", "#finFAte", "#finFConta", "#finFTipo", "#finFOrigem", "#finFBusca"].forEach((s) => {
+  $(s).addEventListener("input", renderFinanceiro);
+  $(s).addEventListener("change", renderFinanceiro);
+});
+$("#finFLimpar").onclick = () => {
+  ["#finFDe", "#finFAte", "#finFBusca"].forEach((s) => ($(s).value = ""));
+  $("#finFConta").value = ""; $("#finFTipo").value = ""; $("#finFOrigem").value = "";
+  renderFinanceiro();
+};
+
+function finFiltrados() {
+  const de = $("#finFDe").value, ate = $("#finFAte").value;
+  const conta = $("#finFConta").value, tipo = $("#finFTipo").value, origem = $("#finFOrigem").value;
+  const q = $("#finFBusca").value.toLowerCase();
+  return movimentosTodos().filter((m) => {
+    const d = dayKey(m.data);
+    if (de && d < de) return false;
+    if (ate && d > ate) return false;
+    if (conta && m.contaId !== conta) return false;
+    if (tipo && m.tipo !== tipo) return false;
+    if (origem && m.origem !== origem) return false;
+    if (q && !((m.desc || "") + " " + (m.pessoa || "") + " " + (m.categoria || "")).toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+
+/* --------------------------- render --------------------------------------- */
+function renderFinanceiro() {
+  const saldos = saldoContas();
+
+  /* contas */
+  const tc = $("#tblFinContas tbody"); tc.innerHTML = "";
+  const contas = contasArray();
+  if (!contas.length) tc.innerHTML = `<tr><td colspan="7" class="empty">Nenhuma conta cadastrada. Cadastre um caixa para começar.</td></tr>`;
+  contas.forEach((c) => {
+    const s = saldos[c.id] || { inicial: 0, mov: 0, saldo: 0 };
+    tc.insertAdjacentHTML("beforeend", `<tr><td>${c.nome}</td><td>${c.tipo || "caixa"}</td>
+      <td>${c.padrao ? '<span class="tag pago">padrão</span>' : "-"}</td>
+      <td>${money(c.saldoInicial)}</td><td class="${s.mov < 0 ? "val-neg" : "val-pos"}">${money(s.mov)}</td>
+      <td><strong>${money(s.saldo)}</strong></td>
+      <td><button class="btn mini" data-ce="${c.id}">Editar</button>
+          <button class="btn mini danger" data-cd="${c.id}">Excluir</button></td></tr>`);
+  });
+  $("#tblFinContas tfoot").innerHTML = contas.length
+    ? `<tr><td colspan="5">Saldo total</td><td colspan="2"><strong>${money(saldoCaixaTotal())}</strong></td></tr>` : "";
+  tc.querySelectorAll("[data-ce]").forEach((b) => (b.onclick = () => {
+    const c = state.contas[b.dataset.ce]; state.editConta = b.dataset.ce;
+    $("#finContaNome").value = c.nome; $("#finContaTipo").value = c.tipo || "caixa";
+    $("#finContaSaldo").value = c.saldoInicial || ""; $("#finContaPadrao").value = c.padrao ? "sim" : "nao";
+  }));
+  tc.querySelectorAll("[data-cd]").forEach((b) => (b.onclick = async () => {
+    if (!guard() || !confirm("Excluir conta? Os movimentos vinculados continuarão registrados.")) return;
+    await remove(ref(db, "contas/" + b.dataset.cd)); toast("Conta excluída.");
+  }));
+
+  /* KPIs */
+  const mesAtual = new Date().toISOString().slice(0, 7);
+  const todos = movimentosTodos();
+  const doMes = todos.filter((m) => movPago(m) && String(dayKey(m.data)).slice(0, 7) === mesAtual);
+  const ent = doMes.filter((m) => m.tipo === "entrada").reduce((s, m) => s + num(m.valor), 0);
+  const sai = doMes.filter((m) => m.tipo === "saida").reduce((s, m) => s + num(m.valor), 0);
+  const pend = todos.filter((m) => !movPago(m));
+  $("#finSaldoTotal").textContent = money(saldoCaixaTotal());
+  $("#finEntradasMes").textContent = money(ent);
+  $("#finSaidasMes").textContent = money(sai);
+  $("#finResultadoMes").textContent = money(ent - sai);
+  $("#finAPagar").textContent = money(pend.filter((m) => m.tipo === "saida").reduce((s, m) => s + num(m.valor), 0));
+  $("#finAReceber").textContent = money(pend.filter((m) => m.tipo === "entrada").reduce((s, m) => s + num(m.valor), 0));
+  if ($("#kpiCaixa")) $("#kpiCaixa").textContent = money(saldoCaixaTotal());
+
+  /* pendentes */
+  const tp = $("#tblFinPend tbody"); tp.innerHTML = "";
+  const hoje = new Date().toISOString().slice(0, 10);
+  const pendOrd = pend.slice().sort((a, b) => String(a.venc || dayKey(a.data)).localeCompare(String(b.venc || dayKey(b.data))));
+  if (!pendOrd.length) tp.innerHTML = `<tr><td colspan="7" class="empty">Nenhuma pendência.</td></tr>`;
+  pendOrd.forEach((m) => {
+    const venc = m.venc || dayKey(m.data);
+    tp.insertAdjacentHTML("beforeend", `<tr class="${venc < hoje ? "vencido" : ""}">
+      <td>${venc.split("-").reverse().join("/")}${venc < hoje ? ' <span class="tag saida">vencido</span>' : ""}</td>
+      <td>${m.desc || "-"}</td><td>${m.categoria || "-"}</td>
+      <td><span class="tag ${m.tipo}">${m.tipo === "entrada" ? "receber" : "pagar"}</span></td>
+      <td>${money(m.valor)}</td><td>${contaNome(m.contaId)}</td>
+      <td><button class="btn mini" data-pg="${m.id}">Marcar como ${m.tipo === "entrada" ? "recebido" : "pago"}</button></td></tr>`);
+  });
+  tp.querySelectorAll("[data-pg]").forEach((b) => (b.onclick = async () => {
+    if (!guard()) return;
+    await update(ref(db, "financeiro/" + b.dataset.pg), { status: "pago", pagoEm: new Date().toISOString() });
+    toast("Baixa registrada.");
+  }));
+
+  /* extrato */
+  const rows = finFiltrados();
+  const tb = $("#tblFinMov tbody"); tb.innerHTML = "";
+  if (!rows.length) { tb.innerHTML = `<tr><td colspan="9" class="empty">Nenhum movimento no filtro.</td></tr>`; $("#tblFinMov tfoot").innerHTML = ""; }
+  else {
+    const cres = rows.slice().sort((a, b) => new Date(a.data) - new Date(b.data));
+    let acc = 0; const saldoDe = {};
+    cres.forEach((m) => { if (movPago(m)) acc += movSinal(m) * num(m.valor); saldoDe[m.id] = acc; });
+    rows.forEach((m) => {
+      tb.insertAdjacentHTML("beforeend", `<tr>
+        <td>${dtLocal(m.data)}</td>
+        <td>${m.desc || "-"}${movPago(m) ? "" : ' <span class="tag pendente">pendente</span>'}</td>
+        <td>${m.categoria || "-"}</td>
+        <td><span class="tag ${m.origem}">${m.origem === "operacional" ? "compra/venda" : "manual"}</span></td>
+        <td>${contaNome(m.contaId)}</td>
+        <td class="val-pos">${m.tipo === "entrada" ? money(m.valor) : "-"}</td>
+        <td class="val-neg">${m.tipo === "saida" ? money(m.valor) : "-"}</td>
+        <td>${money(saldoDe[m.id] || 0)}</td>
+        <td>${m.origem === "manual"
+          ? `<button class="btn mini" data-me="${m.id}">Editar</button> <button class="btn mini danger" data-md="${m.id}">Excluir</button>`
+          : `<button class="btn mini" data-ml="${m.lancamentoId}">Ver lançamento</button>`}</td></tr>`);
+    });
+    const tE = rows.filter((m) => m.tipo === "entrada").reduce((s, m) => s + num(m.valor), 0);
+    const tS = rows.filter((m) => m.tipo === "saida").reduce((s, m) => s + num(m.valor), 0);
+    $("#tblFinMov tfoot").innerHTML = `<tr><td colspan="5">${rows.length} movimento(s)</td>
+      <td class="val-pos">${money(tE)}</td><td class="val-neg">${money(tS)}</td>
+      <td colspan="2"><strong>${money(tE - tS)}</strong></td></tr>`;
+
+    tb.querySelectorAll("[data-me]").forEach((b) => (b.onclick = () => {
+      const m = state.financeiro[b.dataset.me]; state.editMov = b.dataset.me;
+      $("#finData").value = toInputDT(new Date(m.data)); $("#finTipo").value = m.tipo;
+      fillCategorias(); $("#finCategoria").value = m.categoria || "";
+      $("#finConta").value = m.contaId || ""; $("#finValor").value = m.valor;
+      $("#finForma").value = m.forma || "dinheiro"; $("#finVenc").value = m.venc || "";
+      $("#finStatus").value = m.status || "pago"; $("#finPessoa").value = m.pessoa || "";
+      $("#finDesc").value = m.desc || "";
+      $("#finMovForm").scrollIntoView({ behavior: "smooth", block: "center" });
+    }));
+    tb.querySelectorAll("[data-md]").forEach((b) => (b.onclick = async () => {
+      if (!guard() || !confirm("Excluir movimento financeiro?")) return;
+      await remove(ref(db, "financeiro/" + b.dataset.md)); toast("Movimento excluído.");
+    }));
+    tb.querySelectorAll("[data-ml]").forEach((b) => (b.onclick = () => {
+      $$(".nav-item").forEach((x) => x.classList.remove("active"));
+      const nav = $$(".nav-item").find((x) => x.dataset.view === "lancamentos");
+      if (nav) nav.classList.add("active");
+      $$(".view").forEach((v) => v.classList.add("hidden"));
+      $("#view-lancamentos").classList.remove("hidden");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }));
+  }
+
+  /* resumo por categoria */
+  const tcat = $("#tblFinCat tbody"); tcat.innerHTML = "";
+  const cat = {};
+  rows.forEach((m) => {
+    const c = (cat[m.categoria || "Sem categoria"] = cat[m.categoria || "Sem categoria"] || { e: 0, s: 0 });
+    if (m.tipo === "entrada") c.e += num(m.valor); else c.s += num(m.valor);
+  });
+  const keys = Object.keys(cat).sort();
+  if (!keys.length) tcat.innerHTML = `<tr><td colspan="4" class="empty">Sem dados no período.</td></tr>`;
+  keys.forEach((k) => {
+    const c = cat[k];
+    tcat.insertAdjacentHTML("beforeend", `<tr><td>${k}</td><td class="val-pos">${money(c.e)}</td>
+      <td class="val-neg">${money(c.s)}</td><td><strong>${money(c.e - c.s)}</strong></td></tr>`);
+  });
+}
+
+$("#finCsv").onclick = () => {
+  const rows = [["Data", "Descricao", "Categoria", "Origem", "Conta", "Natureza", "Valor", "Situacao", "Pessoa"]];
+  finFiltrados().slice().reverse().forEach((m) => rows.push([
+    dtLocal(m.data), m.desc || "", m.categoria || "", m.origem, contaNome(m.contaId),
+    m.tipo, num(m.valor).toFixed(2), movPago(m) ? "pago" : "pendente", m.pessoa || "",
+  ]));
+  baixar(csv(rows), `financeiro-${Date.now()}.csv`, "text/csv");
+};
+
+/* --------------------- relatórios financeiros em PDF ---------------------- */
+(function relatoriosPDF() {
+  const elTipo = $("#relTipo");
+  if (!elTipo) return;
+  const hoje = new Date();
+  $("#relDia").value = hoje.toISOString().slice(0, 10);
+  $("#relMes").value = hoje.toISOString().slice(0, 7);
+  $("#relAno").value = hoje.getFullYear();
+
+  function alternaCampos() {
+    const t = elTipo.value;
+    $("#relCampoDia").classList.toggle("hidden", t !== "dia");
+    $("#relCampoMes").classList.toggle("hidden", t !== "mes");
+    $("#relCampoAno").classList.toggle("hidden", t !== "ano");
+  }
+  elTipo.onchange = alternaCampos;
+  alternaCampos();
+
+  const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
+    "agosto", "setembro", "outubro", "novembro", "dezembro"];
+
+  function periodo() {
+    const t = elTipo.value;
+    if (t === "dia") {
+      const d = $("#relDia").value || new Date().toISOString().slice(0, 10);
+      return { pref: d, titulo: "Relatório financeiro diário", label: d.split("-").reverse().join("/") };
+    }
+    if (t === "ano") {
+      const a = String($("#relAno").value || new Date().getFullYear());
+      return { pref: a, titulo: "Relatório financeiro anual", label: a };
+    }
+    const m = $("#relMes").value || new Date().toISOString().slice(0, 7);
+    const [ano, mes] = m.split("-");
+    return { pref: m, titulo: "Relatório financeiro mensal", label: `${MESES[Number(mes) - 1]} de ${ano}` };
+  }
+
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+
+  $("#relPdf").onclick = () => {
+    const p = periodo();
+    const contaFiltro = $("#relConta").value;
+    const movs = movimentosTodos()
+      .filter((m) => String(dayKey(m.data)).startsWith(p.pref))
+      .filter((m) => !contaFiltro || m.contaId === contaFiltro)
+      .sort((a, b) => new Date(a.data) - new Date(b.data));
+
+    const pagos = movs.filter(movPago);
+    const ent = pagos.filter((m) => m.tipo === "entrada").reduce((s, m) => s + num(m.valor), 0);
+    const sai = pagos.filter((m) => m.tipo === "saida").reduce((s, m) => s + num(m.valor), 0);
+    const pendE = movs.filter((m) => !movPago(m) && m.tipo === "entrada").reduce((s, m) => s + num(m.valor), 0);
+    const pendS = movs.filter((m) => !movPago(m) && m.tipo === "saida").reduce((s, m) => s + num(m.valor), 0);
+
+    const porConta = {};
+    pagos.forEach((m) => {
+      const k = contaNome(m.contaId);
+      const o = (porConta[k] = porConta[k] || { e: 0, s: 0 });
+      if (m.tipo === "entrada") o.e += num(m.valor); else o.s += num(m.valor);
+    });
+    const porCat = {};
+    pagos.forEach((m) => {
+      const k = m.categoria || "Sem categoria";
+      const o = (porCat[k] = porCat[k] || { e: 0, s: 0 });
+      if (m.tipo === "entrada") o.e += num(m.valor); else o.s += num(m.valor);
+    });
+
+    const linhas = movs.map((m) => `<tr>
+      <td>${esc(dtLocal(m.data))}</td><td>${esc(m.desc || "-")}${movPago(m) ? "" : " (pendente)"}</td>
+      <td>${esc(m.categoria || "-")}</td><td>${esc(contaNome(m.contaId))}</td>
+      <td class="r">${m.tipo === "entrada" ? money(m.valor) : "-"}</td>
+      <td class="r">${m.tipo === "saida" ? money(m.valor) : "-"}</td></tr>`).join("");
+
+    const tabela = (obj, titulo) => `<h3>${titulo}</h3><table><thead><tr>
+      <th>${titulo.includes("conta") ? "Conta" : "Categoria"}</th><th class="r">Entradas</th><th class="r">Saídas</th><th class="r">Saldo</th>
+      </tr></thead><tbody>${Object.keys(obj).sort().map((k) => `<tr><td>${esc(k)}</td>
+      <td class="r">${money(obj[k].e)}</td><td class="r">${money(obj[k].s)}</td>
+      <td class="r"><strong>${money(obj[k].e - obj[k].s)}</strong></td></tr>`).join("")
+      || `<tr><td colspan="4">Sem dados no período.</td></tr>`}</tbody></table>`;
+
+    const empresa = (state.ui && state.ui.brand) || "Relatório financeiro";
+
+    const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8" />
+<title>${esc(p.titulo)} — ${esc(p.label)}</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 12px; margin: 0; }
+  h1 { font-size: 18px; margin: 0 0 2px; }
+  h2 { font-size: 13px; font-weight: normal; color: #555; margin: 0 0 14px; }
+  h3 { font-size: 13px; margin: 18px 0 6px; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  th, td { border-bottom: 1px solid #ddd; padding: 4px 6px; text-align: left; vertical-align: top; }
+  th { background: #f2f2f2; font-size: 11px; }
+  td.r, th.r { text-align: right; white-space: nowrap; }
+  .kpis { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+  .kpi { border: 1px solid #ddd; border-radius: 6px; padding: 6px 10px; min-width: 120px; }
+  .kpi span { display: block; color: #666; font-size: 10px; text-transform: uppercase; }
+  .kpi strong { font-size: 14px; }
+  tfoot td { font-weight: bold; background: #f8f8f8; }
+  .rodape { margin-top: 16px; color: #777; font-size: 10px; }
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+</style></head><body>
+<h1>${esc(empresa)}</h1>
+<h2>${esc(p.titulo)} — ${esc(p.label)}${contaFiltro ? " — conta: " + esc(contaNome(contaFiltro)) : " — todas as contas"}</h2>
+<div class="kpis">
+  <div class="kpi"><span>Entradas</span><strong>${money(ent)}</strong></div>
+  <div class="kpi"><span>Saídas</span><strong>${money(sai)}</strong></div>
+  <div class="kpi"><span>Resultado</span><strong>${money(ent - sai)}</strong></div>
+  <div class="kpi"><span>A receber</span><strong>${money(pendE)}</strong></div>
+  <div class="kpi"><span>A pagar</span><strong>${money(pendS)}</strong></div>
+  <div class="kpi"><span>Movimentos</span><strong>${movs.length}</strong></div>
+</div>
+${tabela(porConta, "Resumo por conta")}
+${tabela(porCat, "Resumo por categoria")}
+<h3>Extrato do período</h3>
+<table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Conta</th><th class="r">Entrada</th><th class="r">Saída</th></tr></thead>
+<tbody>${linhas || `<tr><td colspan="6">Nenhum movimento no período.</td></tr>`}</tbody>
+<tfoot><tr><td colspan="4">Totais (pagos)</td><td class="r">${money(ent)}</td><td class="r">${money(sai)}</td></tr></tfoot></table>
+<p class="rodape">Emitido em ${esc(dtLocal(new Date().toISOString()))}</p>
+</body></html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) return toast("Permita pop-ups para gerar o relatório.", true);
+    w.document.open(); w.document.write(html); w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 400);
+  };
+})();
