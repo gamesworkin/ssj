@@ -1,8 +1,8 @@
 {
-  "name": "Workin'Store - Sistema Gerencial",
-  "short_name": "WorkinStore",
-  "start_url": "/admin/",
-  "scope": "/admin/",
+  "name": "Sistema Gerencial Sucata São José",
+  "short_name": "Sucata São José",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0b0e14",
   "theme_color": "#0b0e14",
