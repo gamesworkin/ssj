@@ -262,8 +262,12 @@ $("#prodCancel").onclick = () => { state.editProd = null; $("#prodForm").reset()
 function renderProdutos() {
   const tb = $("#tblProdutos tbody"); tb.innerHTML = "";
   const list = Object.entries(state.produtos).sort((a, b) => a[1].nome.localeCompare(b[1].nome));
-  if (!list.length) { tb.innerHTML = `<tr><td colspan="7" class="empty">Nenhum produto cadastrado.</td></tr>`; return; }
-  for (const [id, p] of list) {
+  if (!list.length) {
+    tb.innerHTML = `<tr><td colspan="7" class="empty">Nenhum produto cadastrado.</td></tr>`;
+    renderPager("tblProdutos", "produtos", 0, renderProdutos, "produto(s)");
+    return;
+  }
+  for (const [id, p] of paginar("produtos", list)) {
     const margem = num(p.precoVenda) - num(p.precoCompra);
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${p.nome}</td><td>${p.categoria || "-"}</td><td>${p.unidade === "un" ? "un" : "kg"}</td><td>${money(p.precoCompra)}</td>
@@ -283,6 +287,7 @@ function renderProdutos() {
     if (!guard() || !confirm("Excluir produto?")) return;
     await remove(ref(db, "produtos/" + b.dataset.d)); toast("Produto excluído.");
   }));
+  renderPager("tblProdutos", "produtos", list.length, renderProdutos, "produto(s)");
 }
 function fillProductSelects() {
   const list = Object.entries(state.produtos).sort((a, b) => a[1].nome.localeCompare(b[1].nome));
@@ -358,11 +363,11 @@ $("#lancCancel").onclick = () => { state.editLanc = null; $("#lancForm").reset()
 
 
 ["#fDe", "#fAte", "#fProduto", "#fTipo", "#fBusca"].forEach((s) => {
-  const reset = () => { state.lancPage = 1; renderLancamentos(); };
+  const reset = () => { resetPagina("lanc"); renderLancamentos(); };
   $(s).addEventListener("input", reset);
   $(s).addEventListener("change", reset);
 });
-$("#fLimpar").onclick = () => { ["#fDe", "#fAte", "#fBusca"].forEach((s) => ($(s).value = "")); $("#fProduto").value = ""; $("#fTipo").value = ""; state.lancPage = 1; renderLancamentos(); };
+$("#fLimpar").onclick = () => { ["#fDe", "#fAte", "#fBusca"].forEach((s) => ($(s).value = "")); $("#fProduto").value = ""; $("#fTipo").value = ""; resetPagina("lanc"); renderLancamentos(); };
 
 function lancArray() {
   return Object.entries(state.lancamentos)
@@ -383,51 +388,83 @@ function aplicaFiltros(arr) {
     return true;
   });
 }
-const LANC_POR_PAGINA = 50;
-const LANC_PAGS_VISIVEIS = 5;
-state.lancPage = 1;
+/* ============================ PAGINAÇÃO GENÉRICA ==========================
+   30 itens por página, no máximo 5 números de página visíveis e setas < >
+   para navegar quando existirem mais páginas.
+   ======================================================================== */
+const POR_PAGINA = 30;
+const PAGS_VISIVEIS = 5;
+state.pages = state.pages || {};
 
-function renderPagerLanc(total) {
-  const el = $("#lancPager");
+const totalPaginas = (total) => Math.max(1, Math.ceil(total / POR_PAGINA));
+
+function paginar(key, rows) {
+  const tp = totalPaginas(rows.length);
+  let cur = Number(state.pages[key] || 1);
+  if (cur > tp) cur = tp;
+  if (cur < 1) cur = 1;
+  state.pages[key] = cur;
+  const ini = (cur - 1) * POR_PAGINA;
+  return rows.slice(ini, ini + POR_PAGINA);
+}
+
+function resetPagina(key) { state.pages[key] = 1; }
+
+/* devolve (criando se preciso) o container do pager logo após a tabela */
+function pagerHost(tableId) {
+  const fixo = document.getElementById(tableId + "Pager");
+  if (fixo) return fixo;
+  const t = document.getElementById(tableId);
+  if (!t) return null;
+  let el = document.getElementById("pager-" + tableId);
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "pager";
+    el.id = "pager-" + tableId;
+    const host = t.closest(".table-wrap") || t;
+    host.insertAdjacentElement("afterend", el);
+  }
+  return el;
+}
+
+function renderPager(tableId, key, total, rerender, rotulo) {
+  const el = pagerHost(tableId);
   if (!el) return;
-  const totalPag = Math.max(1, Math.ceil(total / LANC_POR_PAGINA));
-  if (!total) { el.innerHTML = ""; return; }
-  const cur = state.lancPage;
-  let ini = Math.max(1, cur - Math.floor(LANC_PAGS_VISIVEIS / 2));
-  let fim = Math.min(totalPag, ini + LANC_PAGS_VISIVEIS - 1);
-  ini = Math.max(1, fim - LANC_PAGS_VISIVEIS + 1);
-  const setas = totalPag > LANC_PAGS_VISIVEIS;
-  let html = `<span class="pager-info">Página ${cur} de ${totalPag} · ${total} movimentação(ões)</span><div class="pager-btns">`;
-  if (setas) html += `<button class="btn mini" data-pg="${cur - 1}" ${cur === 1 ? "disabled" : ""}>&lt;</button>`;
+  const tp = totalPaginas(total);
+  if (total <= POR_PAGINA) { el.innerHTML = ""; return; }
+  const cur = Number(state.pages[key] || 1);
+  let ini = Math.max(1, cur - Math.floor(PAGS_VISIVEIS / 2));
+  let fim = Math.min(tp, ini + PAGS_VISIVEIS - 1);
+  ini = Math.max(1, fim - PAGS_VISIVEIS + 1);
+  const setas = tp > PAGS_VISIVEIS;
+  let html = `<span class="pager-info">Página ${cur} de ${tp} · ${total} ${rotulo || "registro(s)"}</span><div class="pager-btns">`;
+  if (setas) html += `<button class="btn mini" data-pg="${cur - 1}" ${cur === 1 ? "disabled" : ""} aria-label="Página anterior">&lt;</button>`;
   for (let pg = ini; pg <= fim; pg++) {
     html += `<button class="btn mini ${pg === cur ? "primary" : ""}" data-pg="${pg}">${pg}</button>`;
   }
-  if (setas) html += `<button class="btn mini" data-pg="${cur + 1}" ${cur === totalPag ? "disabled" : ""}>&gt;</button>`;
+  if (setas) html += `<button class="btn mini" data-pg="${cur + 1}" ${cur === tp ? "disabled" : ""} aria-label="Próxima página">&gt;</button>`;
   html += `</div>`;
   el.innerHTML = html;
   el.querySelectorAll("[data-pg]").forEach((b) => (b.onclick = () => {
     const pg = Number(b.dataset.pg);
-    if (pg < 1 || pg > totalPag || pg === state.lancPage) return;
-    state.lancPage = pg;
-    renderLancamentos();
-    $("#tblLanc").scrollIntoView({ behavior: "smooth", block: "start" });
+    if (pg < 1 || pg > tp || pg === Number(state.pages[key] || 1)) return;
+    state.pages[key] = pg;
+    rerender();
+    const t = document.getElementById(tableId);
+    if (t) t.scrollIntoView({ behavior: "smooth", block: "start" });
   }));
 }
 
 function renderLancamentos() {
   const rows = aplicaFiltros(lancArray());
   const tb = $("#tblLanc tbody"); tb.innerHTML = "";
-  const totalPag = Math.max(1, Math.ceil(rows.length / LANC_POR_PAGINA));
-  if (state.lancPage > totalPag) state.lancPage = totalPag;
-  if (state.lancPage < 1) state.lancPage = 1;
   if (!rows.length) {
     tb.innerHTML = `<tr><td colspan="10" class="empty">Nenhum lançamento no filtro.</td></tr>`;
     $("#tblLanc tfoot").innerHTML = "";
-    renderPagerLanc(0);
+    renderPager("tblLanc", "lanc", 0, renderLancamentos, "lançamento(s)");
     return;
   }
-  const inicio = (state.lancPage - 1) * LANC_POR_PAGINA;
-  const pagina = rows.slice(inicio, inicio + LANC_POR_PAGINA);
+  const pagina = paginar("lanc", rows);
   for (const l of pagina) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${dtLocal(l.data)}</td><td><span class="tag ${l.tipo}">${l.tipo}</span></td>
@@ -444,7 +481,7 @@ function renderLancamentos() {
   $("#tblLanc tfoot").innerHTML = `<tr><td colspan="3">${rows.length} registro(s) · exibindo ${pagina.length}</td><td>${dual(tPeso, tUn)}</td>
     <td>Compras</td><td>${money(tC)}</td><td>Vendas</td><td colspan="3">${money(tV)}</td></tr>`;
 
-  renderPagerLanc(rows.length);
+  renderPager("tblLanc", "lanc", rows.length, renderLancamentos, "lançamento(s)");
 
   tb.querySelectorAll("[data-e]").forEach((b) => (b.onclick = () => {
     const l = state.lancamentos[b.dataset.e]; state.editLanc = b.dataset.e;
@@ -508,7 +545,9 @@ function renderEstoque() {
   const tb = $("#tblEstoque tbody"); tb.innerHTML = "";
   const ids = Object.keys(map);
   if (!ids.length) { tb.innerHTML = `<tr><td colspan="8" class="empty">Sem movimentação.</td></tr>`; }
-  ids.sort((a, b) => prodNome(a).localeCompare(prodNome(b))).forEach((id) => {
+  ids.sort((a, b) => prodNome(a).localeCompare(prodNome(b)));
+  renderPager("tblEstoque", "estoque", ids.length, renderEstoque, "produto(s)");
+  paginar("estoque", ids).forEach((id) => {
     const m = map[id];
     const u = prodUnid(id);
     const f = (v) => (u === "un" ? un(v) : kg(v));
@@ -519,7 +558,8 @@ function renderEstoque() {
   const ta = $("#tblAjustes tbody"); ta.innerHTML = "";
   const list = Object.entries(state.ajustes).map(([id, a]) => ({ id, ...a })).sort((a, b) => new Date(b.data) - new Date(a.data));
   if (!list.length) ta.innerHTML = `<tr><td colspan="7" class="empty">Nenhum ajuste.</td></tr>`;
-  list.forEach((a) => {
+  renderPager("tblAjustes", "ajustes", list.length, renderEstoque, "ajuste(s)");
+  paginar("ajustes", list).forEach((a) => {
     ta.insertAdjacentHTML("beforeend", `<tr><td>${dtLocal(a.data)}</td><td>${a.produtoNome || prodNome(a.produtoId)}</td>
       <td>${a.tipo}</td><td>${qtd(a.peso, unidDe(a))}</td><td>${money(a.custo)}</td><td>${a.obs || "-"}</td>
       <td><button class="btn mini danger" data-da="${a.id}">Excluir</button></td></tr>`);
@@ -1046,12 +1086,14 @@ $("#finTransfForm").addEventListener("submit", async (e) => {
 
 /* --------------------------- filtros / extrato ---------------------------- */
 ["#finFDe", "#finFAte", "#finFConta", "#finFTipo", "#finFOrigem", "#finFBusca"].forEach((s) => {
-  $(s).addEventListener("input", renderFinanceiro);
-  $(s).addEventListener("change", renderFinanceiro);
+  const reFin = () => { resetPagina("finMov"); resetPagina("finCat"); renderFinanceiro(); };
+  $(s).addEventListener("input", reFin);
+  $(s).addEventListener("change", reFin);
 });
 $("#finFLimpar").onclick = () => {
   ["#finFDe", "#finFAte", "#finFBusca"].forEach((s) => ($(s).value = ""));
   $("#finFConta").value = ""; $("#finFTipo").value = ""; $("#finFOrigem").value = "";
+  resetPagina("finMov"); resetPagina("finCat");
   renderFinanceiro();
 };
 
@@ -1079,7 +1121,8 @@ function renderFinanceiro() {
   const tc = $("#tblFinContas tbody"); tc.innerHTML = "";
   const contas = contasArray();
   if (!contas.length) tc.innerHTML = `<tr><td colspan="7" class="empty">Nenhuma conta cadastrada. Cadastre um caixa para começar.</td></tr>`;
-  contas.forEach((c) => {
+  renderPager("tblFinContas", "finContas", contas.length, renderFinanceiro, "conta(s)");
+  paginar("finContas", contas).forEach((c) => {
     const s = saldos[c.id] || { inicial: 0, mov: 0, saldo: 0 };
     tc.insertAdjacentHTML("beforeend", `<tr><td>${c.nome}</td><td>${c.tipo || "caixa"}</td>
       <td>${c.padrao ? '<span class="tag pago">padrão</span>' : "-"}</td>
@@ -1120,7 +1163,8 @@ function renderFinanceiro() {
   const hoje = new Date().toISOString().slice(0, 10);
   const pendOrd = pend.slice().sort((a, b) => String(a.venc || dayKey(a.data)).localeCompare(String(b.venc || dayKey(b.data))));
   if (!pendOrd.length) tp.innerHTML = `<tr><td colspan="7" class="empty">Nenhuma pendência.</td></tr>`;
-  pendOrd.forEach((m) => {
+  renderPager("tblFinPend", "finPend", pendOrd.length, renderFinanceiro, "pendência(s)");
+  paginar("finPend", pendOrd).forEach((m) => {
     const venc = m.venc || dayKey(m.data);
     tp.insertAdjacentHTML("beforeend", `<tr class="${venc < hoje ? "vencido" : ""}">
       <td>${venc.split("-").reverse().join("/")}${venc < hoje ? ' <span class="tag saida">vencido</span>' : ""}</td>
@@ -1138,12 +1182,17 @@ function renderFinanceiro() {
   /* extrato */
   const rows = finFiltrados();
   const tb = $("#tblFinMov tbody"); tb.innerHTML = "";
-  if (!rows.length) { tb.innerHTML = `<tr><td colspan="9" class="empty">Nenhum movimento no filtro.</td></tr>`; $("#tblFinMov tfoot").innerHTML = ""; }
+  if (!rows.length) {
+    tb.innerHTML = `<tr><td colspan="9" class="empty">Nenhum movimento no filtro.</td></tr>`;
+    $("#tblFinMov tfoot").innerHTML = "";
+    renderPager("tblFinMov", "finMov", 0, renderFinanceiro, "movimento(s)");
+  }
   else {
     const cres = rows.slice().sort((a, b) => new Date(a.data) - new Date(b.data));
     let acc = 0; const saldoDe = {};
     cres.forEach((m) => { if (movPago(m)) acc += movSinal(m) * num(m.valor); saldoDe[m.id] = acc; });
-    rows.forEach((m) => {
+    renderPager("tblFinMov", "finMov", rows.length, renderFinanceiro, "movimento(s)");
+    paginar("finMov", rows).forEach((m) => {
       tb.insertAdjacentHTML("beforeend", `<tr>
         <td>${dtLocal(m.data)}</td>
         <td>${m.desc || "-"}${movPago(m) ? "" : ' <span class="tag pendente">pendente</span>'}</td>
@@ -1196,7 +1245,8 @@ function renderFinanceiro() {
   });
   const keys = Object.keys(cat).sort();
   if (!keys.length) tcat.innerHTML = `<tr><td colspan="4" class="empty">Sem dados no período.</td></tr>`;
-  keys.forEach((k) => {
+  renderPager("tblFinCat", "finCat", keys.length, renderFinanceiro, "categoria(s)");
+  paginar("finCat", keys).forEach((k) => {
     const c = cat[k];
     tcat.insertAdjacentHTML("beforeend", `<tr><td>${k}</td><td class="val-pos">${money(c.e)}</td>
       <td class="val-neg">${money(c.s)}</td><td><strong>${money(c.e - c.s)}</strong></td></tr>`);
