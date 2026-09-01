@@ -206,7 +206,7 @@
         <h2 class="view-title">Relatórios</h2>
         <div class="panel filters">
           <div><label>Período</label><select id="relTipo">
-            <option value="diario">Diário</option><option value="mensal">Mensal</option><option value="anual">Anual</option>
+            <option value="diario">Diário</option><option value="semanal">Semanal</option><option value="mensal">Mensal</option><option value="anual">Anual</option>
           </select></div>
           <div><label>Referência</label><input type="date" id="relRef" /></div>
           <div><label>Movimentação</label><select id="relMovTipo">
@@ -502,14 +502,15 @@
 
         <h3 class="sub">Relatórios financeiros em PDF</h3>
         <div class="panel filters">
-          <div><label>Período</label><select id="relTipo">
-            <option value="dia">Diário</option><option value="mes" selected>Mensal</option><option value="ano">Anual</option>
+          <div><label>Período</label><select id="finRelTipo">
+            <option value="dia">Diário</option><option value="semana">Semanal</option><option value="mes" selected>Mensal</option><option value="ano">Anual</option>
           </select></div>
-          <div id="relCampoDia" class="hidden"><label>Dia</label><input type="date" id="relDia" /></div>
-          <div id="relCampoMes"><label>Mês</label><input type="month" id="relMes" /></div>
-          <div id="relCampoAno" class="hidden"><label>Ano</label><input type="number" id="relAno" min="2000" max="2100" step="1" /></div>
+          <div id="finRelCampoDia" class="hidden"><label>Dia</label><input type="date" id="finRelDia" /></div>
+          <div id="finRelCampoSemana" class="hidden"><label>Semana (dia de referência)</label><input type="date" id="finRelSemana" /></div>
+          <div id="finRelCampoMes"><label>Mês</label><input type="month" id="finRelMes" /></div>
+          <div id="finRelCampoAno" class="hidden"><label>Ano</label><input type="number" id="finRelAno" min="2000" max="2100" step="1" /></div>
           <div><label>Conta</label><select id="relConta"><option value="">Todas</option></select></div>
-          <div class="row gap end"><button class="btn primary" id="relPdf">Imprimir / salvar PDF</button></div>
+          <div class="row gap end"><button class="btn primary" id="finRelPdf">Imprimir / salvar PDF</button></div>
         </div>
       </section>
 

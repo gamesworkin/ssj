@@ -747,10 +747,24 @@ if ($("#relProdNenhum")) $("#relProdNenhum").onclick = () => {
 function relMovTipo() { return ($("#relMovTipo") && $("#relMovTipo").value) || ""; }
 $("#relPrint").onclick = () => window.print();
 
+/* semana (segunda a domingo) que contém a data informada (YYYY-MM-DD) */
+function semanaDe(iso) {
+  const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number);
+  const base = new Date(y, (m || 1) - 1, d || 1);
+  const dow = (base.getDay() + 6) % 7; // 0 = segunda
+  const ini = new Date(base); ini.setDate(base.getDate() - dow);
+  const fim = new Date(ini); fim.setDate(ini.getDate() + 6);
+  const fmt = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  return { de: fmt(ini), ate: fmt(fim) };
+}
 function periodoRel() {
   const tipo = $("#relTipo").value;
   const ref0 = $("#relRef").value || new Date().toISOString().slice(0, 10);
   if (tipo === "diario") return { de: ref0, ate: ref0, label: "Dia " + ref0 };
+  if (tipo === "semanal") {
+    const s = semanaDe(ref0);
+    return { de: s.de, ate: s.ate, label: `Semana ${s.de.split("-").reverse().join("/")} a ${s.ate.split("-").reverse().join("/")}` };
+  }
   if (tipo === "mensal") {
     const [y, m] = ref0.split("-");
     const last = new Date(Number(y), Number(m), 0).getDate();
@@ -1377,18 +1391,21 @@ $("#finCsv").onclick = () => {
 
 /* --------------------- relatórios financeiros em PDF ---------------------- */
 (function relatoriosPDF() {
-  const elTipo = $("#relTipo");
+  const elTipo = $("#finRelTipo");
   if (!elTipo) return;
   const hoje = new Date();
-  $("#relDia").value = hoje.toISOString().slice(0, 10);
-  $("#relMes").value = hoje.toISOString().slice(0, 7);
-  $("#relAno").value = hoje.getFullYear();
+  const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+  $("#finRelDia").value = hojeIso;
+  $("#finRelSemana").value = hojeIso;
+  $("#finRelMes").value = hojeIso.slice(0, 7);
+  $("#finRelAno").value = hoje.getFullYear();
 
   function alternaCampos() {
     const t = elTipo.value;
-    $("#relCampoDia").classList.toggle("hidden", t !== "dia");
-    $("#relCampoMes").classList.toggle("hidden", t !== "mes");
-    $("#relCampoAno").classList.toggle("hidden", t !== "ano");
+    $("#finRelCampoDia").classList.toggle("hidden", t !== "dia");
+    $("#finRelCampoSemana").classList.toggle("hidden", t !== "semana");
+    $("#finRelCampoMes").classList.toggle("hidden", t !== "mes");
+    $("#finRelCampoAno").classList.toggle("hidden", t !== "ano");
   }
   elTipo.onchange = alternaCampos;
   alternaCampos();
@@ -1396,28 +1413,38 @@ $("#finCsv").onclick = () => {
   const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
     "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
+  const br = (d) => String(d).split("-").reverse().join("/");
+
   function periodo() {
     const t = elTipo.value;
     if (t === "dia") {
-      const d = $("#relDia").value || new Date().toISOString().slice(0, 10);
-      return { pref: d, titulo: "Relatório financeiro diário", label: d.split("-").reverse().join("/") };
+      const d = $("#finRelDia").value || hojeIso;
+      return { de: d, ate: d, titulo: "Relatório financeiro diário", label: br(d) };
+    }
+    if (t === "semana") {
+      const s = semanaDe($("#finRelSemana").value || hojeIso);
+      return { de: s.de, ate: s.ate, titulo: "Relatório financeiro semanal", label: `${br(s.de)} a ${br(s.ate)}` };
     }
     if (t === "ano") {
-      const a = String($("#relAno").value || new Date().getFullYear());
-      return { pref: a, titulo: "Relatório financeiro anual", label: a };
+      const y = String($("#finRelAno").value || hoje.getFullYear());
+      return { de: `${y}-01-01`, ate: `${y}-12-31`, titulo: "Relatório financeiro anual", label: y };
     }
-    const m = $("#relMes").value || new Date().toISOString().slice(0, 7);
+    const m = $("#finRelMes").value || hojeIso.slice(0, 7);
     const [ano, mes] = m.split("-");
-    return { pref: m, titulo: "Relatório financeiro mensal", label: `${MESES[Number(mes) - 1]} de ${ano}` };
+    const last = new Date(Number(ano), Number(mes), 0).getDate();
+    return {
+      de: `${ano}-${mes}-01`, ate: `${ano}-${mes}-${String(last).padStart(2, "0")}`,
+      titulo: "Relatório financeiro mensal", label: `${MESES[Number(mes) - 1]} de ${ano}`,
+    };
   }
 
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
 
-  $("#relPdf").onclick = () => {
+  $("#finRelPdf").onclick = () => {
     const p = periodo();
     const contaFiltro = $("#relConta").value;
     const movs = movimentosTodos()
-      .filter((m) => String(dayKey(m.data)).startsWith(p.pref))
+      .filter((m) => { const d = dayKey(m.data); return d >= p.de && d <= p.ate; })
       .filter((m) => !contaFiltro || m.contaId === contaFiltro)
       .sort((a, b) => new Date(a.data) - new Date(b.data));
 
